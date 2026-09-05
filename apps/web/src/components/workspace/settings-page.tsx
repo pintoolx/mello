@@ -19,10 +19,10 @@ export function SettingsPage({ resource, health }: {
           <CompanyForm company={resource.data.company} onSaved={resource.refresh} />
         ) : (
           <Notice title={resource.loading ? "正在讀取公司設定…" : "公司設定尚未載入"}>
-            {!resource.loading && <button className="workspace-button" onClick={resource.refresh}>重新讀取</button>}
+            {!resource.loading && "連線恢復後會自動更新。"}
           </Notice>
         )}
-        <Credit health={health.error ? null : health.data} loading={health.loading} />
+        <Balance health={health.error ? null : health.data} loading={health.loading} />
       </div>
     </>
   );
@@ -39,21 +39,25 @@ function CompanyProfile({ company }: { company: Company }) {
   );
 }
 
-function Credit({ health, loading }: { health: Health | null; loading: boolean }) {
+function Balance({ health, loading }: { health: Health | null; loading: boolean }) {
   const [notice, setNotice] = useState(false);
   const balance = creditBalanceAtomic(health);
   return (
     <section className="workspace-panel settings-credit" aria-labelledby="credit-title">
-      <div className="panel-heading"><h2 id="credit-title">Credit</h2></div>
+      <div className="panel-heading"><h2 id="credit-title">餘額</h2></div>
       <div className="credit-content">
         <p className="credit-balance" aria-live="polite" aria-busy={loading}
           title={!loading && balance === null ? "目前無法讀取實際餘額" : undefined}>
           <strong>{loading ? "讀取中…" : money(balance)}</strong><span>USDC</span>
         </p>
+        <p className="panel-note">Base Sepolia 測試網</p>
+        {!loading && balance === null && (
+          <p className="credit-notice" role="status">暫時無法讀取餘額，稍後會自動更新。</p>
+        )}
         <button className="workspace-button" type="button" onClick={() => setNotice(true)}>
-          <span aria-hidden="true">＋</span> Top up <span className="mock-label">Mock</span>
+          <span aria-hidden="true">＋</span> Top up
         </button>
-        {notice && <p className="credit-notice" role="status">Mock 展示，尚未進行加值。</p>}
+        {notice && <p className="credit-notice" role="status">加值功能尚未開放，本次未發送交易。</p>}
       </div>
     </section>
   );

@@ -73,7 +73,7 @@ export function TaskDetail({
             返回清單
           </Link>
         </PageHeading>
-        <ErrorMessage error={resource.error} retry={resource.refresh} />
+        <ErrorMessage error={resource.error} autoRefresh />
         {resource.loading && <Notice title="正在讀取案件…" />}
       </>
     );
@@ -103,9 +103,6 @@ export function TaskDetail({
             {actionBusy ? "處理中…" : selectionSubmitted ? "繼續採購處理" : "開始探索"}
           </button>
         )}
-        <button className="workspace-button" onClick={resource.refresh}>
-          重新整理
-        </button>
       </PageHeading>
       <ol className="procurement-steps" aria-label="採購流程">
         {["建立申請", "Agent 探索服務", "人工選用服務", "採購與付款"].map((label, index) => (
@@ -114,7 +111,7 @@ export function TaskDetail({
           </li>
         ))}
       </ol>
-      <ErrorMessage error={error || resource.error} retry={resource.refresh} />
+      <ErrorMessage error={error || resource.error} autoRefresh={!error} />
       {task.status === "WAITING_SELECTION" && (
         <ServiceSurvey key={task.updatedAt} task={task} busy={actionBusy} frozen={frozen}
           onSelect={(selection) => void action(`/tasks/${taskId}/select`, selection)}

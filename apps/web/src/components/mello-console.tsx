@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { MelloLogo } from "./mello-logo";
 import { useResource, Notice, ErrorMessage } from "./workspace/shared";
-import { SessionGate, useSession } from "./workspace/session";
+import { useSession } from "./workspace/session";
 import {
   RequestList,
   NewRequest,
@@ -53,11 +53,7 @@ function NavIcon({ name }: { name: string }) {
 }
 
 export function MelloConsole() {
-  return (
-    <SessionGate>
-      <Workspace />
-    </SessionGate>
-  );
+  return <Workspace />;
 }
 
 function Workspace() {
@@ -171,22 +167,14 @@ function Workspace() {
         </aside>
         <main className="workspace-main" id="main-content">
           <div className="workspace-content" key={pathname}>
-            <ErrorMessage error={settings.error} retry={settings.refresh} />
-            <ErrorMessage error={controls.error} retry={controls.refresh} />
+            <ErrorMessage error={settings.error} autoRefresh />
+            <ErrorMessage error={controls.error} autoRefresh />
             {settings.data &&
               (!settings.data.company ||
                 !settings.data.policy ||
                 !settings.data.services.length) && (
                 <Notice title="後端尚未完成初始化">
-                  請管理員初始化公司、政策與供應商後重新讀取。
-                  <p>
-                    <button
-                      className="workspace-button"
-                      onClick={settings.refresh}
-                    >
-                      重新讀取設定
-                    </button>
-                  </p>
+                  請管理員初始化公司、政策與供應商，完成後畫面會自動更新。
                 </Notice>
               )}
             {controls.data?.paymentsFrozen && (

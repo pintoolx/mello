@@ -185,7 +185,7 @@ export async function requestJson<T>(
   } catch (error) {
     if (error instanceof Error && error.name === "AbortError") throw error;
     throw new ApiError(
-      "無法連線，請重新讀取既有案件。建立申請時若回應遺失，請用原請求找回，不要另建付款。",
+      "暫時無法連線。建立申請時若回應遺失，請用原請求找回，不要另建付款。",
       "CONNECTION_ERROR",
     );
   }
@@ -207,7 +207,7 @@ export async function requestJson<T>(
     );
   if (body === null)
     throw new ApiError(
-      "後端回應格式異常，請重新讀取狀態。",
+      "後端回應格式異常，暫時無法取得狀態。",
       "INVALID_RESPONSE",
     );
   return body as T;

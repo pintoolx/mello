@@ -70,9 +70,6 @@ export function RequestList() {
       <section className="workspace-panel">
         <div className="panel-heading">
           <h2>申請清單</h2>
-          <button className="text-button" onClick={resource.refresh}>
-            重新整理
-          </button>
         </div>
         <div className="list-toolbar">
           <label className="search-field">
@@ -101,7 +98,7 @@ export function RequestList() {
             </select>
           </label>
         </div>
-        <ErrorMessage error={resource.error} retry={resource.refresh} />
+        <ErrorMessage error={resource.error} autoRefresh />
         {resource.loading ? (
           <Notice title="正在讀取採購申請…" />
         ) : !resource.error && !visible.length ? (
@@ -499,17 +496,13 @@ export function PurchaseList() {
       <PageHeading
         title="付款與憑證"
         description="每一筆採購的結算、發票與對帳結果並列，核對三者是否一致。"
-      >
-        <button className="workspace-button" onClick={resource.refresh}>
-          重新整理
-        </button>
-      </PageHeading>
+      />
       <section className="workspace-panel">
         <div className="panel-heading">
           <h2>採購紀錄</h2>
           <span>依建立時間排序</span>
         </div>
-        <ErrorMessage error={resource.error} retry={resource.refresh} />
+        <ErrorMessage error={resource.error} autoRefresh />
         {resource.loading ? (
           <Notice title="正在讀取紀錄…" />
         ) : !resource.error && !resource.data?.items.length ? (
@@ -636,16 +629,13 @@ export function PolicyPage({
       >
         <span className="readonly-label">政策唯讀 · 付款控制可操作</span>
       </PageHeading>
-      <ErrorMessage error={resource.error} retry={resource.refresh} />
+      <ErrorMessage error={resource.error} autoRefresh />
       <section className="workspace-panel">
         <div className="panel-heading">
           <h2>新付款控制</h2>
-          <button className="text-button" onClick={controls.refresh}>
-            重新讀取
-          </button>
         </div>
         <div className="control-content">
-          <ErrorMessage error={error} retry={controls.refresh} />
+          <ErrorMessage error={error} />
           <p role="status">
             {controls.data
               ? controls.data.paymentsFrozen
@@ -654,7 +644,7 @@ export function PolicyPage({
               : "正在讀取付款控制…"}
           </p>
           <p>
-            凍結會阻止新申請與尚未放行的付款；已取得送出許可的在途付款不會撤銷。設定保存在後端，重新整理仍有效。
+            凍結會阻止新申請與尚未放行的付款；已取得送出許可的在途付款不會撤銷。設定保存在後端，畫面會自動更新。
           </p>
           <button
             className="workspace-button"
@@ -713,17 +703,13 @@ export function AuditPage() {
       <PageHeading
         title="稽核紀錄"
         description="查閱系統保留的採購事件與處理依據。"
-      >
-        <button className="workspace-button" onClick={resource.refresh}>
-          重新整理
-        </button>
-      </PageHeading>
+      />
       <section className="workspace-panel">
         <div className="panel-heading">
           <h2>事件紀錄</h2>
           <span>依系統事件順序</span>
         </div>
-        <ErrorMessage error={resource.error} retry={resource.refresh} />
+        <ErrorMessage error={resource.error} autoRefresh />
         {resource.loading ? (
           <Notice title="正在讀取事件…" />
         ) : (
