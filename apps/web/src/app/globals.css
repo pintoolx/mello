@@ -90,13 +90,6 @@ video:focus-visible {
   width: 108px;
   height: auto;
 }
-.workspace-product {
-  border-left: 1px solid #cbd1ce;
-  padding-left: 24px;
-  font-size: 14px;
-  letter-spacing: 0.06em;
-  color: #57646e;
-}
 .workspace-organization {
   margin-left: auto;
   display: flex;
@@ -920,7 +913,6 @@ video:focus-visible {
   .workspace-brand > div > img {
     width: 85px;
   }
-  .workspace-product,
   .organization-mark {
     display: none;
   }

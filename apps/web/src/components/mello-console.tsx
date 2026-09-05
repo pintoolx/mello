@@ -105,7 +105,6 @@ function Workspace() {
         >
           <MelloLogo light={false} />
         </Link>
-        <span className="workspace-product">採購與付款管理</span>
         <div className="workspace-organization">
           <span className="organization-mark" aria-hidden="true">
             企

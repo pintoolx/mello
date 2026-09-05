@@ -8,6 +8,7 @@
     "packages/*"
   ],
   "scripts": {
+    "generate:favicons": "node scripts/generate-favicons.mjs",
     "dev": "npm run dev --workspace @mello/web",
     "dev:web": "npm run dev --workspace @mello/web",
     "dev:docs": "npm run dev --workspace @mello/docs",
