@@ -365,6 +365,22 @@ code {
   padding: 5px;
   font-weight: 400;
 }
+.doc-figure {
+  margin: 22px 0;
+}
+.doc-figure img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid #dbe2d3;
+  background: #fff;
+}
+.doc-figure figcaption {
+  margin-top: 10px;
+  font-size: 12px;
+  line-height: 1.7;
+  color: #7e897d;
+}
 .mobile-doc-nav,
 .mobile-toc {
   display: none;
