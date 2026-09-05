@@ -1,0 +1,1 @@
+ALTER TABLE "Service" ADD COLUMN "displayName" VARCHAR(100);

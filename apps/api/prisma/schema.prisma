@@ -172,6 +172,7 @@ model Seller {
 
 model Service {
   id                String     @id @db.VarChar(64)
+  displayName       String?    @db.VarChar(100)
   sellerId          String     @db.VarChar(64)
   category          String     @db.VarChar(64)
   endpoint          String     @db.VarChar(2048)

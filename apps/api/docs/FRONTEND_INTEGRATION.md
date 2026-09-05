@@ -196,3 +196,16 @@ HTTP error 不一定代表 task 已失敗；task 的持久化失敗另見 `task.
 ## 後續討論
 
 以上流程已接線；後續產品化需補多租戶與職務分權、SSO／持久化登入限流、正式發票 adapter，以及跨 Agent 共用業務 key 的協議。合約保留根目錄 contracts/，不要求前端連錢包，簽章與 gas 操作由後端負責。
+
+## Demo 服務比較資料
+
+`db:prepare` 會透過 `db:demo-service-options` 冪等新增兩筆獨立名錄項目：
+
+| serviceId | 顯示名稱 | 實際供應商 | 發票 | 初始認證 |
+|---|---|---|---|---|
+| credit-report-c | Mello 信用報告 C（Demo） | seller-b | Demo 測試發票 | UNREVIEWED |
+| credit-report-d | Mello 信用報告 D（Demo） | seller-a | 無 | UNREVIEWED |
+
+這兩筆共用既有供應商的履約端點與報價，保留真實 sellerId；前端以 `displayName` 區分服務，並另外顯示供應商。公開 Bazaar 的端點與付款條件仍須完整相符。服務認證以各 serviceId 的審核紀錄判定，新增項目不繼承 A/B 的認證。
+
+新增只會建立缺少的 C/D 與 `SERVICE_REGISTERED` 稽核事件；既有 A/B、公司政策、採購歷史及 C/D 後續的修改、停用與審核結果均保留。需先套用 `20260906010000_service_display_name`，再部署 API 與 Web。

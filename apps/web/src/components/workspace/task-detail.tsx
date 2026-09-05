@@ -314,7 +314,8 @@ export function TaskDetail({
                             className={selected ? "selected-row" : undefined}
                           >
                             <td>
-                              <strong>{candidate.sellerLegalName}</strong>
+                              <strong>{candidate.displayName ?? candidate.sellerLegalName}</strong>
+                              {candidate.displayName && <small>供應商：{candidate.sellerLegalName}</small>}
                               <small>
                                 {candidate.serviceId ?? candidate.id}
                               </small>
@@ -476,7 +477,7 @@ function PurchaseRecords({
           </div>
           <dl>
             <Field label="供應商">
-              {purchase.selectedService.sellerLegalName}
+              {purchase.selectedService.displayName ?? purchase.selectedService.sellerLegalName}
             </Field>
             <Field label="採購服務" mono>
               {purchase.selectedService.id}

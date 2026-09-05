@@ -12,7 +12,8 @@ export function surveyCandidate(candidate: CandidateEvaluation, service: Service
   if (requirements.requiresRegistryCertification && verification.status !== "VERIFIED" &&
     !reasons.some((reason) => reason.startsWith("VERIFICATION_"))) reasons.push(`VERIFICATION_${verification.status}`);
   return {
-    ...candidate, matchesRequirements, discoverySource, verificationStatus: verification.status,
+    ...candidate, ...(service.displayName ? { displayName: service.displayName } : {}),
+    matchesRequirements, discoverySource, verificationStatus: verification.status,
     selectionHash: hashCanonicalJson({ terms: approvalTerms(service), bindingHash: serviceBindingHash(service),
       verificationRevision: requirements.requiresRegistryCertification ? verification.revision : null }),
     eligible: matchesRequirements && reasons.length === 0,

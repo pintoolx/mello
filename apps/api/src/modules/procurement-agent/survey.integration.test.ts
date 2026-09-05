@@ -211,4 +211,26 @@ describe.sequential("survey before human-confirmed procurement", () => {
     expect(h.prepare).toHaveBeenCalledOnce();
     expect(h.paidRequests()).toBe(1);
   });
+
+  it("purchases a named unreviewed option through its existing invoice provider", async () => {
+    const h = await harness();
+    await h.certify();
+    const source = await prisma.service.findUniqueOrThrow({ where: { id: h.service.id } });
+    const option = await prisma.service.create({ data: {
+      ...source, id: `survey-option-${randomUUID()}`, displayName: "Mello 信用報告 C（Demo）",
+    } });
+    serviceIds.push(option.id);
+    const { id, task } = await h.survey({ requiresTwInvoice: true, requiresRegistryCertification: false });
+    const candidate = task.candidates.find((item: { serviceId: string }) => item.serviceId === option.id);
+    expect(candidate).toMatchObject({ displayName: option.displayName, eligible: true, verificationStatus: "UNREVIEWED", supportsTwInvoice: true });
+    expect(task.candidates.find((item: { serviceId: string }) => item.serviceId === h.service.id).verificationStatus).toBe("VERIFIED");
+    await h.post(`/tasks/${id}/select`).send({ serviceId: option.id, selectionHash: candidate.selectionHash }).expect(202);
+    await h.dependencies.workflowJobPoller.runOnce();
+    const complete = (await h.get(`/tasks/${id}`).expect(200)).body;
+    expect(complete.status).toBe("COMPLETED");
+    expect(complete.purchase.selectedService).toMatchObject({ id: option.id, displayName: option.displayName, sellerId: "seller-b" });
+    expect(complete.purchase.invoice.status).toBe("ISSUED_DEMO");
+    expect(h.paidRequests()).toBe(1);
+    expect(await prisma.serviceVerification.findUnique({ where: { serviceId: option.id } })).toBeNull();
+  });
 });
