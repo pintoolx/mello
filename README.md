@@ -193,7 +193,7 @@ Base Sepolia 付款、鏈上存證、Bazaar 公開服務發現與 Railway 部署
 
 - 作品展示網址：[Mello 採購工作區](https://mello402.up.railway.app)
 - 技術文件網址：[Mello 技術文件](https://mello-docs.up.railway.app)
-- 評選影片：待補。
+- 評選影片：[Mello Demo（YouTube）](https://www.youtube.com/watch?v=U4_oLRp2HJI)。
 - 展示順序：建立申請 → 探索服務 → 比較發票與認證 → 人工選用 → 付款 → 發票／對帳／稽核。
 - 既有測試網驗收：[Base Sepolia 付款與存證紀錄](docs/WORKSPACE_LIVE_ACCEPTANCE.md)。
 - 錄影參考：[Demo 腳本](docs/demo-recording-script.md)。
