@@ -4,9 +4,13 @@
 
 ## 問題與目標
 
-x402 讓服務能透過 HTTP 完成付款，但企業在購買時，仍需要知道 seller 是誰、來自哪裡，以及服務是否經過審查。當供應商的身分與背景不透明，企業就難以建立信任，放心讓 AI Agent 代為採購。
+**問題**
 
-Mello 是企業 AI 採購的 orchestration（流程協調）平台，協助 AI Agent 找到符合需求的可信任服務。企業可依 Mello Registry 認證、發票能力與採購政策篩選服務，在人工確認後，一鍵透過 x402 啟動採購，並串接付款、發票、對帳與稽核流程。目標是降低採購、財務與營運團隊採用 Agent 採購的信任門檻，同時保有決策權與可追溯的支出紀錄。
+x402 已能讓 Agent 完成付款，但企業仍很少使用：購買當下看不出供應商來歷，也無法接上既有採購、發票與對帳，因此不敢讓 Agent 自行交易。
+
+**解法**
+
+Mello 是企業端的 Agent 採購編排層。企業先設定統編、額度與供應商白名單，Agent 只向通過驗證、能開立統編發票的服務商下單，經 x402 完成付款，並把付款、交付、發票三份資料對上後寫入稽核紀錄。
 
 ## 核心功能
 
@@ -193,7 +197,7 @@ Base Sepolia 付款、鏈上存證、Bazaar 公開服務發現與 Railway 部署
 
 - 作品展示網址：[Mello 採購工作區](https://mello402.up.railway.app)
 - 技術文件網址：[Mello 技術文件](https://mello-docs.up.railway.app)
-- 評選影片：待補。
+- 評選影片：[Mello Demo（YouTube）](https://www.youtube.com/watch?v=U4_oLRp2HJI)。
 - 展示順序：建立申請 → 探索服務 → 比較發票與認證 → 人工選用 → 付款 → 發票／對帳／稽核。
 - 既有測試網驗收：[Base Sepolia 付款與存證紀錄](docs/WORKSPACE_LIVE_ACCEPTANCE.md)。
 - 錄影參考：[Demo 腳本](docs/demo-recording-script.md)。
