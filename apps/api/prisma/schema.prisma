@@ -1,0 +1,449 @@
+generator client {
+  provider            = "prisma-client"
+  output              = "../src/db/generated/prisma"
+  moduleFormat        = "esm"
+  importFileExtension = "ts"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_DATABASE_URL")
+}
+
+enum TaskStatus {
+  CREATED
+  PARSING
+  DISCOVERING
+  EVALUATING
+  REJECTED
+  AUTH_ANCHOR_PENDING
+  PAYING
+  DELIVERING
+  INVOICING
+  RECONCILING
+  FINAL_ANCHOR_PENDING
+  COMPLETED
+  ACTION_REQUIRED
+  FAILED
+}
+
+enum PurchaseStatus {
+  CREATED
+  AUTH_ANCHOR_PENDING
+  AUTHORIZED
+  PAYING
+  SETTLED
+  DELIVERED
+  INVOICING
+  RECONCILING
+  FINAL_ANCHOR_PENDING
+  COMPLETED
+  ACTION_REQUIRED
+  FAILED
+}
+
+enum SellerStatus {
+  ACTIVE
+  DISABLED
+}
+
+enum InvoiceCapability {
+  NONE
+  TW_B2B_DEMO
+}
+
+enum InvoiceProvider {
+  NONE
+  MOCK
+  ECPAY_STAGE
+}
+
+enum PaymentStatus {
+  NOT_STARTED
+  AUTHORIZED
+  SETTLEMENT_PENDING
+  SETTLED
+  FAILED
+}
+
+enum PaymentAuthorizationStatus {
+  CREATED
+  SIGNED
+  SUBMITTED
+  SETTLED
+  EXPIRED
+  REJECTED
+}
+
+enum DeliveryStatus {
+  PENDING
+  DELIVERED
+  FAILED
+}
+
+enum InvoiceStatus {
+  NOT_REQUIRED
+  PENDING
+  ISSUED_DEMO
+  ISSUED_STAGE
+  FAILED_RETRYABLE
+  FAILED_FINAL
+}
+
+enum ReconciliationStatus {
+  PENDING
+  MATCHED
+  MISMATCH
+}
+
+enum AnchorKind {
+  AUTHORIZE
+  FINALIZE
+  FAIL
+}
+
+enum AnchorStatus {
+  NOT_STARTED
+  PENDING
+  SUBMITTED
+  CONFIRMED
+  FAILED_RETRYABLE
+}
+
+enum WorkflowJobStatus {
+  PENDING
+  RUNNING
+  SUCCEEDED
+  FAILED_RETRYABLE
+  FAILED_FINAL
+}
+
+enum SellerPaymentCacheStatus {
+  PROCESSING
+  SETTLING
+  COMPLETED
+}
+
+model CompanyProfile {
+  id                String     @id @default(uuid()) @db.Uuid
+  legalName         String     @db.VarChar(100)
+  businessId        String     @db.Char(8)
+  email             String     @db.VarChar(254)
+  defaultCostCenter String     @db.VarChar(64)
+  createdAt         DateTime   @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime   @updatedAt @db.Timestamptz(3)
+  purchases         Purchase[]
+}
+
+model Policy {
+  id               String   @id @default(uuid()) @db.Uuid
+  version          Int      @unique
+  perTxLimitAtomic String   @db.VarChar(78)
+  dailyLimitAtomic String   @db.VarChar(78)
+  requireTwInvoice Boolean  @default(true)
+  allowedNetworks  Json
+  allowedTokens    Json
+  allowedSellerIds Json
+  active           Boolean  @default(false)
+  createdAt        DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([active])
+}
+
+model Seller {
+  id                String            @id @db.VarChar(64)
+  legalName         String            @db.VarChar(100)
+  businessId        String?           @db.Char(8)
+  payToAddress      String            @db.VarChar(42)
+  invoiceCapability InvoiceCapability
+  invoiceProvider   InvoiceProvider
+  status            SellerStatus      @default(ACTIVE)
+  createdAt         DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime          @updatedAt @db.Timestamptz(3)
+  services          Service[]
+}
+
+model Service {
+  id                String     @id @db.VarChar(64)
+  sellerId          String     @db.VarChar(64)
+  category          String     @db.VarChar(64)
+  endpoint          String     @db.VarChar(2048)
+  method            String     @db.VarChar(10)
+  priceAtomic       String     @db.VarChar(78)
+  tokenSymbol       String     @db.VarChar(16)
+  tokenAddress      String     @db.VarChar(42)
+  tokenDecimals     Int
+  network           String     @db.VarChar(64)
+  supportsTwInvoice Boolean
+  active            Boolean    @default(true)
+  createdAt         DateTime   @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime   @updatedAt @db.Timestamptz(3)
+  seller            Seller     @relation(fields: [sellerId], references: [id], onDelete: Restrict)
+  purchases         Purchase[]
+
+  @@index([category, active])
+  @@index([sellerId])
+}
+
+model Task {
+  id                 String     @id @default(uuid()) @db.Uuid
+  prompt             String
+  intent             Json?
+  candidates         Json?
+  decisionSummary    String?
+  status             TaskStatus @default(CREATED)
+  errorCode          String?    @db.VarChar(64)
+  errorMessage       String?
+  usedFallbackParser Boolean    @default(false)
+  runStartedAt       DateTime?  @db.Timestamptz(3)
+  completedAt        DateTime?  @db.Timestamptz(3)
+  createdAt          DateTime   @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime   @updatedAt @db.Timestamptz(3)
+  purchase           Purchase?
+
+  @@index([status, createdAt])
+}
+
+model Purchase {
+  id                       String                      @id @default(uuid()) @db.Uuid
+  taskId                   String                      @unique @db.Uuid
+  buyerProfileId           String                      @db.Uuid
+  serviceId                String                      @db.VarChar(64)
+  paymentId                String                      @unique @db.VarChar(128)
+  agentMode                String                      @default("demo") @db.VarChar(16)
+  paymentMode              String                      @default("mock") @db.VarChar(16)
+  invoiceMode              String                      @default("mock") @db.VarChar(32)
+  anchorMode               String                      @default("mock") @db.VarChar(16)
+  paymentExplorerBase      String?                     @db.VarChar(255)
+  anchorExplorerBase       String?                     @db.VarChar(255)
+  expectedAmountAtomic     String                      @db.VarChar(78)
+  actualAmountAtomic       String?                     @db.VarChar(78)
+  network                  String                      @db.VarChar(64)
+  tokenSymbol              String                      @db.VarChar(16)
+  tokenAddress             String                      @db.VarChar(42)
+  tokenDecimals            Int
+  buyerAddress             String                      @db.VarChar(42)
+  payToAddress             String                      @db.VarChar(42)
+  policySnapshot           Json
+  mandateHash              String                      @db.Char(66)
+  policyHash               String                      @db.Char(66)
+  paymentAuthorizationHash String?                     @db.Char(66)
+  expiresAt                DateTime                    @db.Timestamptz(3)
+  status                   PurchaseStatus              @default(CREATED)
+  createdAt                DateTime                    @default(now()) @db.Timestamptz(3)
+  updatedAt                DateTime                    @updatedAt @db.Timestamptz(3)
+  task                     Task                        @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  buyerProfile             CompanyProfile              @relation(fields: [buyerProfileId], references: [id], onDelete: Restrict)
+  service                  Service                     @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+  payment                  Payment?
+  authorization            PaymentAuthorization?
+  delivery                 Delivery?
+  invoice                  Invoice?
+  reconciliation           Reconciliation?
+  anchors                  OnchainAnchor[]
+  authorizationNonces      PaymentAuthorizationNonce[]
+
+  @@unique([id, paymentId])
+  @@index([status, createdAt])
+  @@index([buyerProfileId, createdAt])
+  @@index([serviceId])
+}
+
+model Payment {
+  id              String        @id @default(uuid()) @db.Uuid
+  purchaseId      String        @unique @db.Uuid
+  paymentId       String        @unique @db.VarChar(128)
+  status          PaymentStatus @default(NOT_STARTED)
+  payerAddress    String?       @db.VarChar(42)
+  payeeAddress    String?       @db.VarChar(42)
+  amountAtomic    String?       @db.VarChar(78)
+  network         String?       @db.VarChar(64)
+  tokenAddress    String?       @db.VarChar(42)
+  transactionHash String?       @db.Char(66)
+  paymentRequired Json?
+  paymentResponse Json?
+  authorizedAt    DateTime?     @db.Timestamptz(3)
+  settledAt       DateTime?     @db.Timestamptz(3)
+  createdAt       DateTime      @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime      @updatedAt @db.Timestamptz(3)
+  purchase        Purchase      @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+}
+
+model PaymentAuthorization {
+  id               String                     @id @default(uuid()) @db.Uuid
+  purchaseId       String                     @unique @db.Uuid
+  paymentId        String                     @unique @db.VarChar(128)
+  standard         String                     @default("ERC3009") @db.VarChar(32)
+  scheme           String                     @default("exact") @db.VarChar(32)
+  network          String                     @db.VarChar(64)
+  tokenAddress     String                     @db.VarChar(42)
+  fromAddress      String                     @db.VarChar(42)
+  toAddress        String                     @db.VarChar(42)
+  amountAtomic     String                     @db.VarChar(78)
+  nonce            String                     @unique @db.Char(66)
+  validAfter       BigInt
+  validBefore      BigInt
+  eip712Name       String                     @db.VarChar(128)
+  eip712Version    String                     @db.VarChar(32)
+  eip712ChainId    BigInt
+  typedDataHash    String                     @db.Char(66)
+  signatureHash    String?                    @db.Char(66)
+  status           PaymentAuthorizationStatus @default(CREATED)
+  settlementTxHash String?                    @db.Char(66)
+  createdAt        DateTime                   @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime                   @updatedAt @db.Timestamptz(3)
+  purchase         Purchase                   @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+
+  @@index([status, validBefore])
+}
+
+/// Append-only ERC-3009 nonce history. PaymentAuthorization remains the current
+/// evidence snapshot, while this ledger prevents any prior nonce from being
+/// reused after a later authorization replaces it.
+model PaymentAuthorizationNonce {
+  id            String   @id @default(uuid()) @db.Uuid
+  purchaseId    String   @db.Uuid
+  paymentId     String   @db.VarChar(128)
+  nonce         String   @unique @db.Char(66)
+  typedDataHash String   @db.Char(66)
+  createdAt     DateTime @default(now()) @db.Timestamptz(3)
+  purchase      Purchase @relation(fields: [purchaseId, paymentId], references: [id, paymentId], onDelete: Cascade)
+
+  @@index([purchaseId, createdAt])
+  @@index([paymentId, createdAt])
+}
+
+model Delivery {
+  id           String         @id @default(uuid()) @db.Uuid
+  purchaseId   String         @unique @db.Uuid
+  status       DeliveryStatus @default(PENDING)
+  responseBody Json?
+  responseHash String?        @db.Char(66)
+  deliveredAt  DateTime?      @db.Timestamptz(3)
+  createdAt    DateTime       @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime       @updatedAt @db.Timestamptz(3)
+  purchase     Purchase       @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+}
+
+model Invoice {
+  id                 String          @id @default(uuid()) @db.Uuid
+  purchaseId         String          @unique @db.Uuid
+  status             InvoiceStatus   @default(PENDING)
+  provider           InvoiceProvider @default(MOCK)
+  providerReference  String?         @db.VarChar(128)
+  invoiceNumber      String?         @db.VarChar(64)
+  buyerBusinessId    String?         @db.Char(8)
+  sellerBusinessId   String?         @db.Char(8)
+  sellerProfileId    String?         @db.VarChar(64)
+  sourceAmountAtomic String?         @db.VarChar(78)
+  fxRateTwdPerUsdc   String?         @db.VarChar(32)
+  twdEquivalentMinor String?         @db.VarChar(78)
+  itemName           String?         @db.VarChar(255)
+  paymentId          String?         @db.VarChar(128)
+  paymentTxHash      String?         @db.Char(66)
+  canonicalHash      String?         @db.Char(66)
+  disclaimer         String?         @db.VarChar(255)
+  attemptCount       Int             @default(0)
+  lastError          String?
+  retryClaimId       String?         @db.Uuid
+  retryClaimedAt     DateTime?       @db.Timestamptz(3)
+  issuedAt           DateTime?       @db.Timestamptz(3)
+  createdAt          DateTime        @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime        @updatedAt @db.Timestamptz(3)
+  purchase           Purchase        @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+}
+
+model Reconciliation {
+  id            String               @id @default(uuid()) @db.Uuid
+  purchaseId    String               @unique @db.Uuid
+  status        ReconciliationStatus @default(PENDING)
+  checks        Json
+  canonicalHash String?              @db.Char(66)
+  reconciledAt  DateTime?            @db.Timestamptz(3)
+  createdAt     DateTime             @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime             @updatedAt @db.Timestamptz(3)
+  purchase      Purchase             @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+}
+
+model AuditEvent {
+  id            String   @id @default(uuid()) @db.Uuid
+  sequence      BigInt   @unique @default(autoincrement())
+  aggregateType String   @db.VarChar(32)
+  aggregateId   String   @db.VarChar(128)
+  eventType     String   @db.VarChar(64)
+  actorType     String   @db.VarChar(32)
+  payload       Json
+  requestId     String?  @db.VarChar(128)
+  taskId        String?  @db.Uuid
+  purchaseId    String?  @db.Uuid
+  paymentId     String?  @db.VarChar(128)
+  sellerId      String?  @db.VarChar(64)
+  stage         String?  @db.VarChar(64)
+  createdAt     DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([aggregateType, aggregateId, createdAt])
+  @@index([taskId, createdAt])
+  @@index([purchaseId, createdAt])
+}
+
+model OnchainAnchor {
+  id              String       @id @default(uuid()) @db.Uuid
+  purchaseId      String       @db.Uuid
+  kind            AnchorKind
+  status          AnchorStatus @default(NOT_STARTED)
+  contractAddress String?      @db.VarChar(42)
+  transactionHash String?      @db.Char(66)
+  blockNumber     BigInt?
+  attemptCount    Int          @default(0)
+  errorCode       String?      @db.VarChar(64)
+  errorMessage    String?
+  retryClaimId    String?      @db.Uuid
+  retryClaimedAt  DateTime?    @db.Timestamptz(3)
+  submittedAt     DateTime?    @db.Timestamptz(3)
+  confirmedAt     DateTime?    @db.Timestamptz(3)
+  createdAt       DateTime     @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime     @updatedAt @db.Timestamptz(3)
+  purchase        Purchase     @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+
+  @@unique([purchaseId, kind])
+  @@index([status, updatedAt])
+}
+
+model SellerPaymentCache {
+  id                 String                   @id @default(uuid()) @db.Uuid
+  sellerId           String                   @db.VarChar(64)
+  route              String                   @db.VarChar(255)
+  paymentId          String                   @db.VarChar(128)
+  fingerprint        String                   @db.Char(66)
+  status             SellerPaymentCacheStatus @default(PROCESSING)
+  claimToken         String                   @db.Uuid
+  responseStatus     Int?
+  responseHeaders    Json?
+  responseBody       Json?
+  settlementMetadata Json?
+  expiresAt          DateTime                 @db.Timestamptz(3)
+  createdAt          DateTime                 @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime                 @updatedAt @db.Timestamptz(3)
+
+  @@unique([sellerId, route, paymentId])
+  @@index([expiresAt])
+}
+
+model WorkflowJob {
+  id          String            @id @default(uuid()) @db.Uuid
+  kind        String            @db.VarChar(64)
+  aggregateId String            @db.VarChar(128)
+  payload     Json
+  status      WorkflowJobStatus @default(PENDING)
+  attempts    Int               @default(0)
+  maxAttempts Int               @default(3)
+  availableAt DateTime          @default(now()) @db.Timestamptz(3)
+  lockedAt    DateTime?         @db.Timestamptz(3)
+  lockedBy    String?           @db.VarChar(128)
+  lastError   String?
+  createdAt   DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime          @updatedAt @db.Timestamptz(3)
+
+  @@index([status, availableAt])
+}

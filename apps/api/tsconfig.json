@@ -1,0 +1,59 @@
+{
+  "compilerOptions": {
+    "target": "ES2023",
+    "lib": [
+      "ES2023",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "moduleDetection": "force",
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "noPropertyAccessFromIndexSignature": true,
+    "useUnknownInCatchVariables": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "types": [
+      "node",
+      "vitest/globals"
+    ],
+    "baseUrl": ".",
+    "paths": {
+      "@mello/shared": [
+        "src/shared/index.ts"
+      ],
+      "@mello/db": [
+        "src/db/index.ts"
+      ],
+      "@mello/seller-kit": [
+        "src/seller-kit/index.ts"
+      ],
+      "@mello/tw-einvoice-extension": [
+        "src/tw-einvoice-extension/index.ts"
+      ],
+      "@mello/contracts-client": [
+        "src/contracts-client/index.ts"
+      ]
+    }
+  },
+  "include": [
+    "src/**/*.ts",
+    "sellers/**/*.ts",
+    "scripts/**/*.ts",
+    "*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "coverage",
+    "dist"
+  ]
+}
