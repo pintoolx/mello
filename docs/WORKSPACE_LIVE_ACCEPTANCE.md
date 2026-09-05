@@ -4,7 +4,7 @@
 
 - 主系統：[Railway 工作區](https://web-production-158a1.up.railway.app/app)；沿用私有存取碼，不在文件公開。
 - 獨立文件站：[Mello Docs](https://docs-production-8a88.up.railway.app)。無 API、資料庫、session 或錢包秘密，不與主系統交叉導流。
-- 部署程式碼：`438c4abb482eca2f2b7737ac5f65f0b990cb18a6`；後續提交只新增／更新驗收文件，不改 runtime。
+- API / Sellers 部署程式碼：`438c4abb482eca2f2b7737ac5f65f0b990cb18a6`。Web / Docs 最終為 `b5f987b5ec38a1e505f8ccdddf86ad97f3e19c3e`，含同時更新至 main 的圖示與頁首調整；其 API、合約、lockfile 與前者無差異。
 - [完整機器可讀證據](evidence/base-sepolia-workspace-2026-09-05.json)：部署 IDs、合約建立、付款與存證 hashes、最終餘額與測試結果。
 
 ## 實際合約與付款
@@ -16,7 +16,7 @@
 | 建立草稿、送出採購、發票重試 | `aad84faa-93bc-4020-ad39-573a0de26256` | 0.05 Test USDC | [交易 1](https://sepolia.basescan.org/tx/0xff38e2c4805c5a5b5c0fd84d9ee5575ff4fe4fdae412438f0ec4dcf78140296d) |
 | 0.03 門檻暫停、人工核准 0.05 報價、發票重試 | `c9eee34b-b170-44d0-b008-482984816d8f` | 0.05 Test USDC | [交易 2](https://sepolia.basescan.org/tx/0x5407fd7fc269d817239ecaab75c51ee747553d9d4c4ee0c029b9a0ed612cdf42) |
 
-只讀驗證器逐筆讀取真實 RPC 收據：官方 Base Sepolia Test USDC 合約各有一次 buyer → 選定 Seller 的 `50000` atomic Transfer。兩筆採購各有 AUTHORIZE 與 FINALIZE，共四筆成功鏈上存證，目標都是新合約；`getPurchase` 均為 `FINALIZED`。Buyer、Seller、代幣、金額、mandate／policy／付款授權／settlement／交付／發票／對帳雜湊皆與後端紀錄相符。驗證器不簽名、不重试付款。
+只讀驗證器逐筆讀取真實 RPC 收據：官方 Base Sepolia Test USDC 合約各有一次 buyer → 選定 Seller 的 `50000` atomic Transfer。兩筆採購各有 AUTHORIZE 與 FINALIZE，共四筆成功鏈上存證，目標都是新合約；`getPurchase` 均為 `FINALIZED`。Buyer、Seller、代幣、金額、mandate／policy／付款授權／settlement／交付／發票／對帳雜湊皆與後端紀錄相符。驗證器不簽名、不重試付款。
 
 Buyer Test USDC 從 **0.65 → 0.55**，本次正好支出 **0.10 Test USDC**。Operator nonce 從 17 → 22（部署 1 筆＋存證 4 筆），無 pending 交易；總計耗用 `0.000010438020273704` Test ETH，餘額 `0.000061506227877224`。稽核合約 Test USDC 餘額仍為 0，不代收款。
 
@@ -37,16 +37,19 @@ API、Seller A、Seller B、Web、Docs 的本次指定 deployment IDs 均核對�
 | Docs standalone Docker build + 本機 HTTP health | 通過 |
 | 本地 mock 新版瀏覽器流程 | 10 組通過 |
 | Railway 新版 live 瀏覽器流程 | 10 組通過，0 page errors |
+| 最終圖示／頁首版唯讀瀏覽器流程 | 5 組通過，0 page errors；8 個線上圖示檔與來源完全一致，未新增付款 |
 | 375／768／1280 px | 主系統與六個文件頁無水平溢出；人工檢查桌機對帳與手機核准截圖 |
-| 秘密實值比對 | 239 個 Git 檔案、12 個線上頁面、16 個 client chunks 無命中 |
+| 秘密實值比對 | 初版 239 個、最終版 249 個 Git 檔案；兩次均含 12 個線上頁面、16 個 client chunks，無命中 |
 | Session | Secure / HttpOnly / Strict、匿名拒絕、CSRF、偽造／過期／超長期限拒絕、登出與重新登入恢復案件通過 |
 
 Live 流程另外覆蓋：草稿不付款、發票重試保留原 purchase/payment/hash、request-key 重放不重付、不同內容回傳 409、付款凍結持久化、建立回應遺失後找回原單、低預算拒絕、錯收款地址拒絕、人工核准前不建立付款。Live journal 已完成，不能直接重跑產生新支出。
 
 完整瀏覽器報告與截圖保存在 `/tmp/mello-workspace-live/`；暫存檔可能被系統清理，必要的公開鏈上證據已另存本 repo。重現方式與當次支出批准要求見 [部署說明](RAILWAY.md#explicitly-approved-live-acceptance)。
 
+PR #3 合併時保留了 main 同步新增的 `53a26f4` 圖示／頁首版本，再獨立重部署 Web、Docs，兩個新 deployment IDs 也已確認 `SUCCESS`。針對最後版本使用 `workspace-readonly.py`，攔截禁止所有非 session API 寫入，只讀既有兩筆完成案件，驗證交易連結、Demo 發票、對帳、登入登出、頁面與圖示。結果見 `/tmp/mello-workspace-readonly/report.json`；採購筆數維持 5、Test USDC 維持 0.55。沒有為視覺更新重跑付費流程。
+
 ## 真實測試網與 Demo 邊界
 
 付款模式為 `x402`、存證為 `onchain`，`DEMO_ALLOW_OFFCHAIN_AUTH=false`；Agent 為 `demo`、信用報告是示範資料、發票為 `mock / ISSUED_DEMO`。`MOCK_INVOICE_FAIL_ONCE=true` 刻意展示發票失敗後只重試開票，不重複付款。
 
-鏈上存證證明這組資料雜湊被記錄，**不代表報告經正式徵信，也不代表發票具財政部認證或正式效力**。目前仍是單公司共享存取碼的測試網 MVP，尚非多租戶、正式財務分权或 mainnet 產品。
+鏈上存證證明這組資料雜湊被記錄，**不代表報告經正式徵信，也不代表發票具財政部認證或正式效力**。目前仍是單公司共享存取碼的測試網 MVP，尚非多租戶、正式財務分權或 mainnet 產品。

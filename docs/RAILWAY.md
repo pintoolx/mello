@@ -52,6 +52,8 @@ API pre-deploy: `npm run db:prepare --workspace @mello/api`。由 npm script 順
 MELLO_TESTNET_PAYMENT_APPROVED=true python3 apps/web/scripts/workspace-e2e.py --live
 # 以下只讀鏈上及 API，不會再付款：
 node apps/web/scripts/verify-live.mjs /tmp/mello-workspace-live/report.json
+# 後續僅更新視覺時，沿用既有成功 journal，不再新增採購或付款：
+python3 apps/web/scripts/workspace-readonly.py
 ```
 
 Live 腳本在付款前檢查真實 Base Sepolia RPC、指定合約、Test USDC 餘額、x402/onchain 模式、關閉 off-chain fallback 與固定 0.05 報價。低預算／錯收款地址測試另加 0 元人工核准門檻。發票 fail-once 重試必須保留原 purchase／payment ID 與 settlement hash。報告逐步寫入 request keys／task IDs；已有 live journal 時拒絕重新執行。失敗後不要換輸出目錄繞過保護，應先核對原任務及已發生的支出。
