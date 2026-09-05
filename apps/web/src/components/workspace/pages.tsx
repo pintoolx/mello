@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { RegistryDiscovery, verificationLabel } from "./registry-discovery";
 import { useRouter } from "next/navigation";
 import {
   useMemo,
@@ -490,7 +489,7 @@ export function NewRequest({
   );
 }
 
-export function PurchaseList({ invoices = false }: { invoices?: boolean }) {
+export function PurchaseList() {
   const [offset, setOffset] = useState(0);
   const resource = useResource<PageResult<Purchase>>(
     `/purchases?limit=20&offset=${offset}`,
@@ -498,12 +497,8 @@ export function PurchaseList({ invoices = false }: { invoices?: boolean }) {
   return (
     <>
       <PageHeading
-        title={invoices ? "發票與對帳" : "付款紀錄"}
-        description={
-          invoices
-            ? "核對付款、服務交付與發票，追蹤待處理項目。"
-            : "查看各筆採購的授權、結算狀態與付款識別碼。"
-        }
+        title="付款與憑證"
+        description="每一筆採購的結算、發票與對帳結果並列，核對三者是否一致。"
       >
         <button className="workspace-button" onClick={resource.refresh}>
           重新整理
@@ -511,7 +506,7 @@ export function PurchaseList({ invoices = false }: { invoices?: boolean }) {
       </PageHeading>
       <section className="workspace-panel">
         <div className="panel-heading">
-          <h2>{invoices ? "憑證清單" : "付款清單"}</h2>
+          <h2>採購紀錄</h2>
           <span>依建立時間排序</span>
         </div>
         <ErrorMessage error={resource.error} retry={resource.refresh} />
@@ -528,8 +523,10 @@ export function PurchaseList({ invoices = false }: { invoices?: boolean }) {
                 <tr>
                   <th>採購案件／供應商</th>
                   <th>採購金額</th>
-                  <th>{invoices ? "發票" : "付款"}狀態</th>
-                  <th>{invoices ? "對帳狀態" : "付款識別碼"}</th>
+                  <th>付款狀態</th>
+                  <th>付款識別碼</th>
+                  <th>發票狀態</th>
+                  <th>對帳狀態</th>
                   <th>操作</th>
                 </tr>
               </thead>
@@ -560,25 +557,21 @@ export function PurchaseList({ invoices = false }: { invoices?: boolean }) {
                       </small>
                     </td>
                     <td>
-                      <Badge
-                        status={
-                          invoices ? row.invoice?.status : row.payment?.status
-                        }
-                      />
-                      {invoices && (
-                        <small>
-                          {row.invoice?.invoiceNumber ?? "尚無發票號碼"}
-                        </small>
-                      )}
+                      <Badge status={row.payment?.status} />
                     </td>
                     <td>
-                      {invoices ? (
-                        <Badge status={row.reconciliation?.status} />
-                      ) : (
-                        <span className="record-id">
-                          {row.authorization?.paymentId ?? "—"}
-                        </span>
-                      )}
+                      <span className="record-id">
+                        {row.authorization?.paymentId ?? "—"}
+                      </span>
+                    </td>
+                    <td>
+                      <Badge status={row.invoice?.status} />
+                      <small>
+                        {row.invoice?.invoiceNumber ?? "尚無發票號碼"}
+                      </small>
+                    </td>
+                    <td>
+                      <Badge status={row.reconciliation?.status} />
                     </td>
                     <td>
                       <Link
@@ -698,57 +691,6 @@ export function PolicyPage({
               </Field>
             </dl>
           </section>
-          <section className="workspace-panel">
-            <div className="panel-heading">
-              <h2>已登錄服務</h2>
-              <span>由供應商登錄資料決定收款地址</span>
-            </div>
-            <div className="table-scroll">
-              <table className="records-table">
-                <thead>
-                  <tr>
-                    <th>供應商</th>
-                    <th>報價</th>
-                    <th>台灣發票</th>
-                    <th>政策白名單</th>
-                    <th>Mello 認證</th>
-                    <th>登錄收款地址</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {resource.data?.services.map((service) => (
-                    <tr key={service.id}>
-                      <td>
-                        <strong>{service.displayName ?? service.sellerLegalName}</strong>
-                        {service.displayName && <small>供應商：{service.sellerLegalName}</small>}
-                        <small>{service.id}</small>
-                      </td>
-                      <td className="nowrap">
-                        {money(service.priceAtomic)} USDC
-                      </td>
-                      <td>
-                        {service.supportsTwInvoice ? "支援測試介接" : "不支援"}
-                      </td>
-                      <td>
-                        {policy.allowedSellerIds.includes(service.sellerId)
-                          ? "已列入"
-                          : "未列入"}
-                      </td>
-                      <td>
-                        {verificationLabel(service.verification?.status)}
-                        {service.verification?.expiresAt && <small>期限：{dateTime(service.verification.expiresAt)}</small>}
-                      </td>
-                      <td className="record-id">{service.payToAddress}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </section>
-          <RegistryDiscovery mode={resource.data?.discoveryMode} />
-          <p className="page-footnote">
-            Mello 認證是人工範圍審核，不代表正式 KYB 或合法發票認證。政策白名單與商家認證分別檢查；人工核准不會覆蓋任一限制。
-          </p>
         </>
       ) : (
         !resource.error && (

@@ -34,10 +34,7 @@ function CompanyProfile({ company }: { company: Company }) {
       <span className="settings-avatar" aria-hidden="true">
         <Image src="/brand/mello-cat-green.svg" alt="" width={34} height={29} />
       </span>
-      <div>
-        <h2>{company.legalName}</h2>
-        <p>統一編號 {company.businessId}</p>
-      </div>
+      <h2>{company.legalName}</h2>
     </section>
   );
 }

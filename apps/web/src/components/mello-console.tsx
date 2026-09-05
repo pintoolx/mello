@@ -15,12 +15,13 @@ import {
 } from "./workspace/pages";
 import { TaskDetail } from "./workspace/task-detail";
 import { SettingsPage } from "./workspace/settings-page";
+import { VendorsPage } from "./workspace/vendors-page";
 import type { Control, Health, Settings } from "../lib/core-api";
 
 const navigation = [
   { href: "/app", title: "採購申請", icon: "document" },
-  { href: "/app/payments", title: "付款紀錄", icon: "payment" },
-  { href: "/app/invoices", title: "發票與對帳", icon: "invoice" },
+  { href: "/app/records", title: "付款與憑證", icon: "invoice" },
+  { href: "/app/vendors", title: "供應商", icon: "vendor" },
   { href: "/app/policy", title: "採購政策", icon: "policy" },
   { href: "/app/audit", title: "稽核紀錄", icon: "audit" },
   { href: "/app/settings", title: "設定", icon: "settings" },
@@ -34,6 +35,7 @@ function NavIcon({ name }: { name: string }) {
     policy: "m12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6l8-3Zm-4 9 3 3 5-6",
     audit: "M4 4h16v16H4V4Zm4 4h1m3 0h5m-9 4h1m3 0h5m-9 4h1m3 0h5",
     settings: "M4 6h16M4 12h16M4 18h16M8 3v6m8 0v6m-7 0v6",
+    vendor: "M3 9h18l-1.5 11H4.5L3 9Zm3 0V6a6 6 0 0 1 12 0v3",
   };
   return (
     <svg
@@ -84,10 +86,10 @@ function Workspace() {
         taskId={taskId}
         frozen={controls.data?.paymentsFrozen ?? true}
       />
-    ) : pathname === "/app/payments" ? (
+    ) : pathname === "/app/records" ? (
       <PurchaseList />
-    ) : pathname === "/app/invoices" ? (
-      <PurchaseList invoices />
+    ) : pathname === "/app/vendors" ? (
+      <VendorsPage resource={settings} />
     ) : pathname === "/app/policy" ? (
       <PolicyPage resource={settings} controls={controls} />
     ) : pathname === "/app/audit" ? (
@@ -168,19 +170,6 @@ function Workspace() {
           </div>
         </aside>
         <main className="workspace-main" id="main-content">
-          <div className="workspace-breadcrumb">
-            工作區 <span>/</span> {section.title}
-            {taskId && (
-              <>
-                <span>/</span> 案件詳情
-              </>
-            )}
-            {pathname.endsWith("/new") && (
-              <>
-                <span>/</span> 新增申請
-              </>
-            )}
-          </div>
           <div className="workspace-content" key={pathname}>
             <ErrorMessage error={settings.error} retry={settings.refresh} />
             <ErrorMessage error={controls.error} retry={controls.refresh} />

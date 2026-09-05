@@ -102,8 +102,8 @@ video:focus-visible {
 .workspace-nav-toggle {
   display: grid;
   place-items: center;
-  width: 32px;
-  height: 32px;
+  width: 40px;
+  height: 44px;
   flex-shrink: 0;
   border: 1px solid transparent;
   background: transparent;
@@ -234,17 +234,6 @@ video:focus-visible {
   min-width: 0;
   min-height: 0;
   overflow-y: auto;
-}
-.workspace-breadcrumb {
-  padding: 14px 34px;
-  border-bottom: 1px solid #d5dbd5;
-  color: #7b8587;
-  font-size: 11px;
-  background: #f6f7f2;
-}
-.workspace-breadcrumb span {
-  color: #afb7b2;
-  padding: 0 12px;
 }
 .workspace-content {
   width: 100%;
@@ -615,11 +604,6 @@ video:focus-visible {
   font-size: 17px;
   font-weight: 600;
   color: #22354a;
-}
-.settings-profile p {
-  margin: 3px 0 0;
-  font-size: 12px;
-  color: #6f7d75;
 }
 .settings-layout {
   display: grid;
@@ -1141,9 +1125,6 @@ video:focus-visible {
   .workspace-content {
     padding: 26px 24px 48px;
   }
-  .workspace-breadcrumb {
-    padding-inline: 24px;
-  }
   .request-form {
     grid-template-columns: minmax(0, 1fr) 235px;
     gap: 18px;
@@ -1212,9 +1193,6 @@ video:focus-visible {
   }
   .workspace-sidebar nav svg {
     width: 16px;
-  }
-  .workspace-breadcrumb {
-    padding: 11px 18px;
   }
   .workspace-content {
     padding: 23px 16px 36px;
