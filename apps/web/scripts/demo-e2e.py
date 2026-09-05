@@ -1,4 +1,9 @@
-"""Real browser-to-API demo acceptance. No mocked routes or fake settlement responses."""
+"""Legacy console acceptance for deployed revisions 6ca7b16 / 96e6383 only.
+
+The merged workspace uses workspace-e2e.py. This historical script is retained to
+reproduce DEMO_ACCEPTANCE.md and cannot validate the new /app/tasks/:id UI.
+No mocked routes or fake settlement responses in this legacy test.
+"""
 import argparse
 import json
 import os

@@ -5,6 +5,7 @@ WORKDIR /workspace
 COPY package.json package-lock.json .npmrc ./
 COPY apps/api/package.json apps/api/package.json
 COPY apps/web/package.json apps/web/package.json
+COPY apps/docs/package.json apps/docs/package.json
 COPY apps/api/prisma apps/api/prisma
 ENV DATABASE_URL=postgresql://build:build@localhost:5432/build
 ENV DIRECT_DATABASE_URL=postgresql://build:build@localhost:5432/build

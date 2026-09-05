@@ -1,5 +1,7 @@
 # Railway + Base Sepolia acceptance — 2026-09-05
 
+本文件記錄 `6ca7b16` / `96e6383` 舊版控制台的既有部署與鏈上驗收。之後 PR #2 與新版 main 工作區／獨立文件站的衝突整合是另一次本地驗證，未因此重新部署 Railway 或再次支出測試網資金。
+
 已保留現有前端視覺，將控制台接上實際 API、PostgreSQL、x402 與新部署的稽核合約。
 
 - [線上操作台](https://web-production-158a1.up.railway.app/app)

@@ -4,7 +4,7 @@
 
 ## 整合方式
 
-保留 Next.js 官網、品牌、版面與操作台。`lib/api-client.ts` 處理 HTTP／錯誤，`lib/console-types.ts` 只含 JSON DTO，`lib/use-mello-console.ts` 管理 session、操作與 task polling。
+保留 main 的新版採購工作區、品牌與獨立 `apps/docs`；根路徑直接進入 `/app`，不恢復舊官網或六格 Demo 控制台。`lib/core-api.ts` 統一 HTTP／錯誤與 JSON DTO，`lib/task-input.ts` 管理待確認請求的格式與精確金額轉換；`components/workspace/session.tsx` 管理登入，`shared.tsx` 提供可取消的案件輪詢，`pages.tsx` 與 `task-detail.tsx` 對應新版操作頁面。
 
 ```text
 Next.js Client Component
@@ -25,12 +25,13 @@ Next.js server env 設定 `CORE_API_URL`、`API_ACCESS_TOKEN`、`DEMO_ADMIN_TOKE
 | 畫面／操作 | Endpoint | 請求／回應重點 |
 | --- | --- | --- |
 | 初始載入公司、政策、供應商 | `GET /settings` | `{ company, policy, sellers, services }` |
+| 工作區登入／登出 | `/api/session` 的 GET / POST / DELETE（不加 v1） | POST `{ code }`；登入失效回登入畫面，保留當前案件 URL |
 | 儀表板／採購紀錄摘要 | `GET /dashboard/summary` | `counts, taskStatuses, purchaseStatuses, settledAmountAtomic, recentPurchases, modes` |
 | 系統狀態 | `GET /demo/health` | `status, checkedAt, modes, checks`；即使 degraded 也可回 HTTP 200 |
 | 開立採購任務 | `POST /tasks` | `{ prompt, requestKey?, approvalLimitAtomic?, expectedPayTo? }`；新任務 201，相同 key 與內容回 200 同一 task、`deduplicated=true`；不同內容回 409 |
 | 人工核准 | `POST /tasks/:taskId/approve` | admin；只允許 APPROVAL_REQUIRED，核准綁定完整報價，202 後重新輪詢 |
 | 新付款凍結 | `GET /controls`、`PUT /controls` | PUT 為 admin、body `{ paymentsFrozen: boolean }`；PostgreSQL 持久化 |
-| 執行任務 | `POST /tasks/:taskId/run` | 無 body；202 → `{ taskId, status: "PARSING" }`，實際是排入 worker |
+| 執行任務 | `POST /tasks/:taskId/run` | 無 body；一般 202 排入 worker，已完成案件冪等重跑可回 200，不新增付款 |
 | 任務輪詢／回復頁面 | `GET /tasks/:taskId` | `status, intent, candidates, decisionSummary, error, purchaseId, purchase, timeline` |
 | 任務列表 | `GET /tasks?limit=20&offset=0` | `{ items, total, limit, offset }` |
 | 採購詳情與證據 | `GET /purchases/:id` | `payment, delivery, invoice, reconciliation, anchors, availableActions, modes` |
@@ -100,9 +101,9 @@ Policy 寫入 body：
 
 `version` 由後端管理。以上皆為 atomic-unit 整數字串；不要用 JavaScript 浮點數處理帳務加總。回傳的資料庫 bigint、block number 與 audit sequence 也使用字串。
 
-## 六步進度與終止狀態
+## 案件狀態與終止狀態
 
-API 沒有單一 `stage` 欄位。建議由 task status 推導進度位置，同時獨立呈現各證據狀態。
+API 沒有單一 `stage` 欄位。新版案件詳情呈現狀態標記與申請／供應商政策／付款對帳／活動紀錄分頁；下表為業務階段對照，不代表 UI 有六格進度面板。
 
 | UI 步驟 | 對應 task status | 呈現規則 |
 | --- | --- | --- |
@@ -122,14 +123,14 @@ Anchor 是 `NOT_STARTED / PENDING / SUBMITTED / CONFIRMED / FAILED_RETRYABLE`。
 
 ## 特殊操作與安全邊界
 
-| 現有 Demo 操作 | 後端目前能力 | 建議下一步 |
+ | 現有 Demo 操作 | 後端目前能力 | 建議下一步 |
 | --- | --- | --- |
-| 「測試 0.03 預算」 | 有 | 用明確包含 0.03 USDC 的 prompt 建新 task；測試 API 真正拒絕，不只改畫面 budget |
-| 「模擬財務 Agent 重複下單」 | 持久化 request key 去重 | 相同 key 必須代表同一業務請求；新 key 的相似 prompt 仍是新採購，不宣稱語意去重 |
-| 「凍結所有新付款」 | 全域 server-side gate | 凍結拒絕新任務及尚未放行的付款；已取得 payment-release permit 的在途付款仍可能結算 |
-| 「測試 payTo 不符」 | expectedPayTo 控制與 live terms 比對 | 以明確的錯誤收款限制建立新 task，在 purchase／簽章前拒絕；不變更 seller registry |
-| 「超過 0.08 USDC 先問我」 | 人工審批 API 與持久化條款 hash | 超過門檻回 ACTION_REQUIRED / APPROVAL_REQUIRED，purchase=null；核准後重查報價，變更條款須再核准 |
-| 「重置 Demo」 | UI 只清空目前畫面 | 不刪除 DB／鏈上證據；遠端 BFF 不代理破壞性 reset |
+| 新申請的預算欄位 | 後端政策檢查 | 0.03 USDC 低預算會真實拒絕，不只改畫面 budget |
+| 「找回原申請」 | 持久化 request key 去重 | 相同 key 必須代表同一業務請求；新 key 的相似 prompt 仍是新採購，不宣稱語意去重 |
+| 政策頁「凍結新付款」 | 全域 server-side gate | 凍結拒絕新任務及尚未放行的付款；已取得 payment-release permit 的在途付款仍可能結算 |
+| 付款前控制「限定收款地址」 | expectedPayTo 控制與 live terms 比對 | 不符時在 purchase／簽章前拒絕；不變更 seller registry |
+| 付款前控制「人工核准門檻」 | 人工審批 API 與持久化條款 hash | 超過門檻回 ACTION_REQUIRED / APPROVAL_REQUIRED，purchase=null；案件中確認報價後核准；變更條款須再核准 |
+| 返回採購清單 | 保留既有案件 | 新版沒有 Demo 重置按鈕；遠端 BFF 不代理破壞性 reset |
 | 發票失敗後重試 | 有專用 invoice retry | 只在 `availableActions.retryInvoice` 為 true 時顯示；重試後輪詢，不重送整個 task |
 | settlement 回應不確定 | 僅已有 tx hash 時可 reconcile | 看 `availableActions.reconcilePayment`；沒有 hash 的狀態需保留處理，不是可直接重新付款 |
 
