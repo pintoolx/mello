@@ -1,36 +1,23 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Mello visual MVP
 
-## Getting Started
+Mello 是台灣企業的 Agent Purchase-to-Pay 控制層。這個版本只做黑客松現場使用的視覺與可點互動，不含真實付款、後端資料庫或正式電子發票。
 
-First, run the development server:
+## Run
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+- 官網：`http://localhost:3000/`
+- 操作台：`http://localhost:3000/app`
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Demo 點擊順序
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+1. 在 Task Composer 點「執行採購任務」。
+2. 畫面依序亮起比較、Policy ALLOW、付款、Sandbox Invoice 與 MATCHED。
+3. 點「模擬財務 Agent 重複下單」，展示 `DUPLICATE_PURCHASE`。
+4. 可用「測試 0.03 預算」與「測試 payTo 不符」展示拒絕狀態。
+5. 「凍結所有新付款」只切換前端狀態。
 
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+所有付款與發票皆明確標示為 `SIMULATED` / `SANDBOX` / `TEST INVOICE`。
