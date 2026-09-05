@@ -544,7 +544,7 @@ export function PurchaseList({ invoices = false }: { invoices?: boolean }) {
                         {shortId(row.taskId)}
                       </Link>
                       <strong className="cell-title">
-                        {row.selectedService.sellerLegalName}
+                        {row.selectedService.displayName ?? row.selectedService.sellerLegalName}
                       </strong>
                       <small>{dateTime(row.createdAt)}</small>
                     </td>
@@ -724,7 +724,8 @@ export function PolicyPage({
                   {resource.data?.services.map((service) => (
                     <tr key={service.id}>
                       <td>
-                        <strong>{service.sellerLegalName}</strong>
+                        <strong>{service.displayName ?? service.sellerLegalName}</strong>
+                        {service.displayName && <small>供應商：{service.sellerLegalName}</small>}
                         <small>{service.id}</small>
                       </td>
                       <td className="nowrap">

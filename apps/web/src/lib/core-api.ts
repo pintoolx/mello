@@ -24,6 +24,7 @@ export interface Policy {
   allowedNetworks: string[];
 }
 export interface Service {
+  displayName?: string | null;
   matchesRequirements?: boolean;
   selectionHash?: string;
   id?: string;

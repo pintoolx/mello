@@ -96,6 +96,7 @@ export function explorerLinksForPurchase(
 function normalizedService(
   service: {
     id: string;
+    displayName?: string | null;
     sellerId: string;
     category: string;
     endpoint: string;
@@ -118,6 +119,7 @@ function normalizedService(
 ): unknown {
   return ServiceRecordSchema.parse({
     id: service.id,
+    ...(service.displayName ? { displayName: service.displayName } : {}),
     sellerId: service.sellerId,
     sellerLegalName: service.seller.legalName,
     sellerBusinessId: service.seller.businessId,
@@ -352,6 +354,7 @@ export class PrismaCoreApiRepository implements CoreApiRepository {
         taskStatus: purchase.task.status,
         selectedService: {
           id: purchase.service.id,
+          ...(purchase.service.displayName ? { displayName: purchase.service.displayName } : {}),
           sellerId: purchase.service.sellerId,
           sellerLegalName: purchase.service.seller.legalName,
           priceAtomic: purchase.service.priceAtomic,

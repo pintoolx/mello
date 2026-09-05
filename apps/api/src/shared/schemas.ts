@@ -65,6 +65,7 @@ export type PurchaseIntent = z.infer<typeof PurchaseIntentSchema>;
 
 export const ServiceRecordSchema = z.object({
   id: z.string().min(1),
+  displayName: z.string().trim().min(1).max(100).nullable().optional(),
   sellerId: z.enum(SELLER_IDS),
   sellerLegalName: z.string().min(1),
   sellerBusinessId: z.string().nullable(),
@@ -86,6 +87,7 @@ export type ServiceRecord = z.infer<typeof ServiceRecordSchema>;
 
 export const CandidateEvaluationSchema = z.object({
   serviceId: z.string(),
+  displayName: z.string().trim().min(1).max(100).nullable().optional(),
   sellerId: z.enum(SELLER_IDS),
   sellerLegalName: z.string().min(1),
   invoiceCapability: z.enum(["NONE", "TW_B2B_DEMO"]),
