@@ -136,7 +136,8 @@ DB 測試必須指向專用本地測試 DB，不能使用遠端或保留中的�
 unit／DB integration 涵蓋目錄失敗不 fallback、未知／未認證拒絕、政策獨立、
 審核失效／撤銷、付款放行鎖、證據持久化、已付案件只補發票，以及公開 Seller
 協定與 metadata 隱私。公開 Seller 協定使用 fixture facilitator，不是鏈上成交證據。
-local-stack.integration.test.ts 需要另起 Anvil 與專用完整服務，本輪未執行該項。
+local-stack.integration.test.ts 需要另起 Anvil 與專用完整服務；現有服務未滿足
+onchain preflight，保護檢查已阻擋執行，不能宣稱這 6 個 full-stack 案例通過。
 
 apps/web/scripts/bazaar-e2e.py 先執行既有本地工作區流程，再以 browser fixture
 檢查 Bazaar loading／失敗／空目錄／部分結果、三種尺寸與認證寫入隔離。
@@ -145,16 +146,20 @@ MELLO_E2E_URL、MELLO_E2E_DOCS_URL、MELLO_E2E_OUTPUT，並開啟
 MOCK_INVOICE_FAIL_ONCE=true。只允許本地網址，不可拿 fixture 成功宣稱已收錄。
 
 2026-09-05 的真實 CDP 唯讀查詢成功取得 1 筆符合條件的資源，paidRequests=0；
-這不是我們 Seller A／B 已收錄的證據。已加入 GitHub Actions 的 lint、typecheck、
-unit、registry DB integration 及 build，尚未在遠端執行 CI。
+這不是我們 Seller A／B 已收錄的證據。GitHub Actions 的 lint、typecheck、unit、
+17 項 registry DB integration 及 build 已在 [PR #5 最新 CI](https://github.com/pintoolx/mello/actions/runs/33965634140)
+通過，程式碼已合併為 03ff11acb283af05511e917121548f4d8839ab57。
 
-本地整合與公開容量限制通過：API unit 362 項、前端 unit 6 項、PostgreSQL integration 47 項（12 個檔案，
+本地整合與公開容量限制通過：API unit 362 項、前端 unit 6 項、PostgreSQL integration 52 項（13 個檔案，
 不含上述 Anvil full-stack）、工作區瀏覽器流程 10 項、Bazaar 畫面檢查 7 項。
 全 workspace lint、typecheck 與 production build 亦通過。
 瀏覽器報告保留於 `/tmp/mello-bazaar-workspace/report.json` 與 `bazaar-report.json`；
 使用獨立的 `mello_bazaar_test` 本地 DB，不修改原開發 stack 或遠端資料。
 
-## 下一階段：需另行確認的公開上線
+## 公開上線與後續啟用
+
+公開部署已獲使用者同意，執行狀態及確切付款草案見 [rollout 紀錄](BAZAAR_ROLLOUT.md)。
+下列付款、認證與切換 Bazaar 採購仍各有獨立 gate，不能以部署同意代替。
 
 1. 確認要公開的 Seller HTTPS 網域、Demo 定價與流量／速率限制；API 保持私有。
    靜態 URL 驗證不是 DNS pinning，任意新商家接入前還須補 public DNS／egress
@@ -169,8 +174,9 @@ unit、registry DB integration 及 build，尚未在遠端執行 CI。
 5. 唯讀確認我們的完整 endpoint 已出現在 CDP catalog，再切 API 至 bazaar；
    以已核准的 Test USDC 額度跑端到端驗收，保存目錄、認證、付款與發票證據。
 
-本輪未公開 Seller、未切換 live discovery mode、未重部署合約、未送出付費索引
-請求，也沒有啟用真實 LLM parser。原有線上資料與歷史付款保持不變。
+程式碼實作本身不會公開 Seller 或發出付款。公開部署的實際結果以 rollout 紀錄為準；
+未切換 live discovery mode、未重部署合約、未送出付費索引請求，也沒有啟用真實
+LLM parser。歷史付款不得在上線或 onboarding 時改寫。
 
 ## 官方依據
 
