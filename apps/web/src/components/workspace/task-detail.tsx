@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { useRef, useState } from "react";
 import { ServiceSurvey } from "./service-survey";
 import { visibleSurveyCandidates } from "../../lib/service-survey";
+import { intentServiceName, serviceName, supplierName, taskServiceTitle } from "../../lib/service-catalog";
 import {
   api,
   dateTime,
@@ -86,11 +87,7 @@ export function TaskDetail({
         ← 採購申請
       </Link>
       <PageHeading
-        title={
-          task.intent?.targetCompanyName
-            ? `${task.intent.targetCompanyName} · 信用風險報告`
-            : "企業信用風險報告採購"
-        }
+        title={taskServiceTitle(task.intent)}
         description={`案件 ${shortId(taskId)}　／　建立於 ${dateTime(task.createdAt)}`}
       >
         <Badge status={task.status} />
@@ -260,7 +257,8 @@ export function TaskDetail({
                 <Field label="完整案件編號" mono>
                   {task.taskId}
                 </Field>
-                <Field label="服務類型">企業信用風險報告</Field>
+                <Field label="服務類型">{intentServiceName(task.intent)}</Field>
+                {task.intent?.serviceQuery && <Field label="搜尋服務">{task.intent.serviceQuery}</Field>}
                 <Field label="發票要求">{(task.control?.requirements?.requiresTwInvoice ?? task.intent?.requiresTwInvoice) ? "需要發票" : "不限制"}</Field>
                 <Field label="Mello Registry 認證">{task.control?.requirements?.requiresRegistryCertification ? "需要有效認證" : "不限制"}</Field>
                 <Field label="發票統一編號" mono>
@@ -293,7 +291,7 @@ export function TaskDetail({
                   <table className="records-table">
                     <thead>
                       <tr>
-                        <th>供應商</th>
+                        <th>服務／供應商</th>
                         <th>報價</th>
                         <th>台灣發票</th>
                         <th>Mello Registry 認證</th>
@@ -311,8 +309,9 @@ export function TaskDetail({
                             className={selected ? "selected-row" : undefined}
                           >
                             <td>
-                              <strong>{candidate.displayName ?? candidate.sellerLegalName}</strong>
-                              {candidate.displayName && <small>供應商：{candidate.sellerLegalName}</small>}
+                              <strong>{serviceName(candidate)}</strong>
+                              <small>供應商：{supplierName(candidate)}</small>
+                              {candidate.description && <small>{candidate.description}</small>}
                               <small>
                                 {candidate.serviceId ?? candidate.id}
                               </small>
@@ -474,9 +473,10 @@ function PurchaseRecords({
           </div>
           <dl>
             <Field label="供應商">
-              {purchase.selectedService.displayName ?? purchase.selectedService.sellerLegalName}
+              {supplierName(purchase.selectedService)}
             </Field>
-            <Field label="採購服務" mono>
+            <Field label="採購服務">{serviceName(purchase.selectedService)}</Field>
+            <Field label="服務代號" mono>
               {purchase.selectedService.id}
             </Field>
             <Field label="服務發現來源">
@@ -501,8 +501,7 @@ function PurchaseRecords({
               </details>
             )}
           <p className="sandbox-note">
-            目前信用報告為 Demo
-            資料，非正式徵信評等。鏈上紀錄僅驗證留存雜湊，不證明報告內容真實。
+            目前分析報告為 Demo 範例，非即時行情、正式徵信評等或投資建議。鏈上紀錄僅驗證留存雜湊，不證明報告內容真實。
           </p>
         </section>
         <section>

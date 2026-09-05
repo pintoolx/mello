@@ -19,10 +19,14 @@ import {
   TaskRequirementsSchema,
   ServiceSelectionSchema,
   ServiceRecordSchema,
+  SERVICE_CATEGORIES,
+  getMarketService,
+  isMarketServiceCategory,
   hashCanonicalJson,
   sanitizedErrorMessage,
   type CompanyProfileInput,
   type PolicyInput,
+  type ServiceCategory,
 } from "@mello/shared";
 import { generatePaymentId } from "@x402/extensions/payment-identifier";
 import type { AppConfig } from "../../config.js";
@@ -51,6 +55,7 @@ import { reconcilePurchase } from "../reconciliation/index.js";
 import {
   PendingSettlementVerificationError,
   PaymentSettlementReportSchema,
+  reportMatchesRequest,
   SettledPaymentDeliveryError,
   maximumAuthorizationValidBefore,
   type PaymentProvider,
@@ -411,11 +416,14 @@ export class PurchaseWorkflow {
     const parsedQuarantinedReport = PaymentSettlementReportSchema.safeParse(
       purchase.delivery?.status === "PENDING" ? purchase.delivery.responseBody : null,
     );
-    const intent = purchase.task.intent as { targetCompanyName?: string } | null;
+    const intent = purchase.task.intent as { targetCompanyName?: string; serviceCategory?: ServiceCategory; serviceQuery?: string } | null;
     const quarantinedReport =
       parsedQuarantinedReport.success &&
-      parsedQuarantinedReport.data.provider === purchase.service.sellerId &&
-      parsedQuarantinedReport.data.targetCompanyName === intent?.targetCompanyName
+      reportMatchesRequest(parsedQuarantinedReport.data, {
+        sellerId: purchase.service.sellerId, serviceId: purchase.serviceId,
+        serviceCategory: intent?.serviceCategory, serviceQuery: intent?.serviceQuery,
+        targetCompanyName: intent?.targetCompanyName,
+      })
         ? parsedQuarantinedReport.data
         : null;
     const evidence: PendingSettlementEvidence = {
@@ -763,7 +771,7 @@ export class PurchaseWorkflow {
       prisma.policy.findFirstOrThrow({ where: { active: true } }),
       prisma.service.findMany({
         where: {
-          category: "credit_report",
+          category: { in: [...SERVICE_CATEGORIES] },
           seller: { status: "ACTIVE" },
         },
         include: { seller: true },
@@ -791,6 +799,7 @@ export class PurchaseWorkflow {
       ServiceRecordSchema.parse({
         ...service,
         sellerLegalName: service.seller.legalName,
+        ...(service.seller.displayName ? { sellerDisplayName: service.seller.displayName } : {}),
         sellerBusinessId: service.seller.businessId,
         payToAddress: service.seller.payToAddress,
         invoiceCapability: service.seller.invoiceCapability,
@@ -815,8 +824,8 @@ export class PurchaseWorkflow {
     });
 
     const discovery = config.SERVICE_DISCOVERY_MODE === "bazaar"
-      ? await this.registry.discover(requirements?.requiresRegistryCertification ?? true)
-      : requirements ? await this.registry.discoverLocal(requirements.requiresRegistryCertification) : null;
+      ? await this.registry.discover(requirements?.requiresRegistryCertification ?? true, parsed.intent.serviceCategory)
+      : requirements ? await this.registry.discoverLocal(requirements.requiresRegistryCertification, parsed.intent.serviceCategory) : null;
     if (discovery) services = discovery.services;
     await appendAuditEvent(prisma, {
       aggregateType: "TASK", aggregateId: taskId, taskId, requestId, stage: "DISCOVERING",
@@ -840,7 +849,7 @@ export class PurchaseWorkflow {
       const reasons = [...(candidate.eligible ? [] : candidate.reasonCodes), ...assessment.reasonCodes];
       return { ...candidate, discoverySource: "cdp_bazaar", verificationStatus: assessment.verification.status,
         eligible: reasons.length === 0, reasonCodes: reasons.length ? reasons : ["CANDIDATE_ELIGIBLE", "BAZAAR_VERIFICATION_MATCHED"],
-        humanSummary: reasons.length ? `未通過：${reasons.join("、")}` : `${candidate.sellerLegalName} 的 Bazaar 服務、Mello 認證與企業政策均通過。`,
+        humanSummary: reasons.length ? `未通過：${reasons.join("、")}` : `${candidate.sellerDisplayName ?? candidate.sellerLegalName} 的 Bazaar 服務、Mello 認證與企業政策均通過。`,
       };
     });
     await this.setTaskStage(
@@ -1019,7 +1028,7 @@ export class PurchaseWorkflow {
         where: { id: taskId, status: "EVALUATING" },
         data: {
           status: "EVALUATING",
-          decisionSummary: `Registry candidate ${selectedService.sellerLegalName} selected；正在驗證 live 402 payment terms。`,
+          decisionSummary: `Registry candidate ${selectedService.sellerDisplayName ?? selectedService.sellerLegalName} selected；正在驗證 live 402 payment terms。`,
         },
       });
       if (purchaseCreated.count !== 1) {
@@ -1116,6 +1125,9 @@ export class PurchaseWorkflow {
         sellerId: selectedService.sellerId,
         endpoint: selectedService.endpoint,
         targetCompanyName: parsed.intent.targetCompanyName,
+        serviceId: selectedService.id,
+        serviceCategory: parsed.intent.serviceCategory,
+        serviceQuery: parsed.intent.serviceQuery,
         purchaseContextToken,
         requiresTwInvoice: invoiceRequired,
         network: selectedService.network,
@@ -1158,7 +1170,7 @@ export class PurchaseWorkflow {
         nextTaskStatus: "AUTH_ANCHOR_PENDING",
         nextPurchaseStatus: "AUTH_ANCHOR_PENDING",
         taskData: {
-          decisionSummary: `選擇 ${selectedService.sellerLegalName}：live 402 terms 已通過政策，價格為 ${selectedService.priceAtomic} atomic USDC。`,
+          decisionSummary: `選擇 ${selectedService.sellerDisplayName ?? selectedService.sellerLegalName}：live 402 terms 已通過政策，價格為 ${selectedService.priceAtomic} atomic USDC。`,
         },
         aggregateType: "PURCHASE",
         aggregateId: purchaseId,
@@ -1709,6 +1721,8 @@ export class PurchaseWorkflow {
 
     const intent = purchase.task.intent as {
       targetCompanyName?: string;
+      serviceCategory?: ServiceCategory;
+      serviceQuery?: string;
       requiresTwInvoice?: boolean;
       buyerBusinessId?: string;
       maxAmount?: { atomic?: string };
@@ -1765,7 +1779,7 @@ export class PurchaseWorkflow {
       payToAddress: purchase.payToAddress,
       invoiceCapability: sellerId === "seller-b" ? "TW_B2B_DEMO" : "NONE",
       invoiceProvider: sellerId === "seller-b" ? "MOCK" : "NONE",
-      category: "credit_report",
+      category: intent?.serviceCategory ?? "credit_report",
       endpoint: purchase.service.endpoint,
       method: "POST",
       priceAtomic: purchase.expectedAmountAtomic,
@@ -1776,9 +1790,12 @@ export class PurchaseWorkflow {
       supportsTwInvoice: sellerId === "seller-b",
       active: true,
     });
-    const retryIntent = {
-      serviceCategory: "credit_report" as const,
-      targetCompanyName: intent?.targetCompanyName ?? "Example Co.",
+    const retryCategory = intent?.serviceCategory ?? "credit_report";
+    const retryIntent = PurchaseIntentSchema.parse({
+      serviceCategory: retryCategory,
+      ...(isMarketServiceCategory(retryCategory)
+        ? { serviceQuery: intent?.serviceQuery }
+        : { targetCompanyName: intent?.targetCompanyName ?? "Example Co." }),
       maxAmount: {
         atomic: maxAmountAtomic,
         display: maxAmountAtomic,
@@ -1789,7 +1806,7 @@ export class PurchaseWorkflow {
       costCenter: "PURCHASE_SNAPSHOT",
       networkPreference: purchase.network as "eip155:84532",
       usedDemoDefaultTarget: false,
-    };
+    });
     const evaluateRetryLiveTerms = (
       livePaymentTerms: PreparedPayment["validatedTerms"],
     ) =>
@@ -1881,6 +1898,9 @@ export class PurchaseWorkflow {
         sellerId,
         endpoint: purchase.service.endpoint,
         targetCompanyName: retryIntent.targetCompanyName,
+        serviceId: purchase.serviceId,
+        serviceCategory: retryIntent.serviceCategory,
+        serviceQuery: retryIntent.serviceQuery,
         purchaseContextToken,
         requiresTwInvoice: policy.requireTwInvoice || retryIntent.requiresTwInvoice,
         network: purchase.network,
@@ -2546,7 +2566,7 @@ export class PurchaseWorkflow {
         sellerProfileId: purchase.service.seller.id,
         sourceAmountAtomic: purchase.payment.amountAtomic ?? "",
         fxRateTwdPerUsdc: config.DEMO_TWD_PER_USDC,
-        itemName: `${intent?.targetCompanyName ?? "Example Co."} 信用報告`,
+        itemName: getMarketService(purchase.serviceId)?.displayName ?? `${intent?.targetCompanyName ?? "Example Co."} 信用報告`,
         paymentId: purchase.paymentId,
         paymentTxHash: purchase.payment.transactionHash ?? "",
         issuedAt: this.now(),

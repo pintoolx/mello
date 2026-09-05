@@ -37,8 +37,13 @@ export function evaluateCandidates({
         reasons.push("INVOICE_UNSUPPORTED");
       }
       const eligible = reasons.length === 0;
+      const sellerName = service.sellerDisplayName ?? service.sellerLegalName;
       return {
         serviceId: service.id,
+        category: service.category,
+        ...(service.displayName ? { displayName: service.displayName } : {}),
+        ...(service.sellerDisplayName ? { sellerDisplayName: service.sellerDisplayName } : {}),
+        ...(service.description ? { description: service.description } : {}),
         sellerId: service.sellerId,
         sellerLegalName: service.sellerLegalName,
         invoiceCapability: service.invoiceCapability,
@@ -47,8 +52,8 @@ export function evaluateCandidates({
         eligible,
         reasonCodes: eligible ? ["CANDIDATE_ELIGIBLE"] : reasons,
         humanSummary: eligible
-          ? `${service.sellerLegalName} 符合預算、付款與發票政策。`
-          : `${service.sellerLegalName} 未通過：${reasons.join("、")}。`,
+          ? `${sellerName} 符合預算、付款與發票政策。`
+          : `${sellerName} 未通過：${reasons.join("、")}。`,
       };
     })
     .sort((left, right) => {

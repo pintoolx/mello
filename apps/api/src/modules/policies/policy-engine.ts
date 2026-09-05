@@ -35,6 +35,7 @@ export function evaluatePolicy({
   const dailyAfter = dailyBefore + price;
   const invoiceRequired = policy.requireTwInvoice || intent.requiresTwInvoice;
 
+  if (service.category !== intent.serviceCategory) rejectReasons.push("CATEGORY_MISMATCH");
   if (price > BigInt(policy.perTxLimitAtomic)) rejectReasons.push("PER_TX_LIMIT_EXCEEDED");
   if (price > BigInt(intent.maxAmount.atomic)) rejectReasons.push("USER_BUDGET_EXCEEDED");
   if (dailyAfter > BigInt(policy.dailyLimitAtomic)) rejectReasons.push("DAILY_LIMIT_EXCEEDED");

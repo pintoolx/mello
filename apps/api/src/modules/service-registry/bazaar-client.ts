@@ -13,7 +13,8 @@ export const BazaarResourceSchema = z.object({
   })).min(1).max(20),
   extensions: z.object({
     bazaar: z.object({
-      info: z.object({ input: z.object({ type: z.literal("http"), method: z.string().max(10) }) }),
+      info: z.object({ input: z.object({ type: z.literal("http"), method: z.string().max(10), body: z.unknown().optional() }) }),
+      schema: z.unknown().optional(),
     }),
   }),
 });

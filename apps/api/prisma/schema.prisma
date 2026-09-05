@@ -159,6 +159,7 @@ model Policy {
 
 model Seller {
   id                String            @id @db.VarChar(64)
+  displayName       String?           @db.VarChar(100)
   legalName         String            @db.VarChar(100)
   businessId        String?           @db.Char(8)
   payToAddress      String            @db.VarChar(42)

@@ -8,8 +8,9 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "next typegen && tsc --noEmit",
-    "test": "node --experimental-strip-types --test scripts/task-input.test.mjs scripts/task-polling.test.mjs scripts/settings.test.mjs scripts/resource-refresh.test.mjs",
-    "qa:visual": "node scripts/visual-qa.mjs"
+    "test": "node --experimental-strip-types --test scripts/task-input.test.mjs scripts/task-polling.test.mjs scripts/settings.test.mjs scripts/resource-refresh.test.mjs scripts/service-catalog.test.mjs",
+    "qa:visual": "node scripts/visual-qa.mjs",
+    "qa:service-first": "python scripts/service-first-qa.py"
   },
   "dependencies": {
     "next": "16.3.4",

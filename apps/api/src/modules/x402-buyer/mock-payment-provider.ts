@@ -12,7 +12,7 @@ import type {
   PreparedPayment,
   ValidatedPaymentTerms,
 } from "./payment-provider.js";
-import { PaymentSettlementReportSchema } from "./payment-provider.js";
+import { PaymentSettlementReportSchema, reportMatchesRequest, reportRequestBody } from "./payment-provider.js";
 import { assertAuthorizationTimeoutWithinPolicy } from "./payment-provider.js";
 import {
   MelloError,
@@ -44,10 +44,7 @@ export class MockPaymentProvider implements PaymentProvider {
   }
 
   async prepare(input: PreparePaymentInput): Promise<PreparedPayment> {
-    const requestBody = JSON.stringify({
-      targetCompanyName: input.targetCompanyName,
-      purchaseContextToken: input.purchaseContextToken,
-    });
+    const requestBody = JSON.stringify(reportRequestBody(input));
     let unpaidResponse: Response;
     try {
       unpaidResponse = await this.fetchImplementation(input.endpoint, {
@@ -249,10 +246,7 @@ export class MockPaymentProvider implements PaymentProvider {
           }
         }
         const report = PaymentSettlementReportSchema.parse(await paidResponse.json());
-        if (
-          report.provider !== input.sellerId ||
-          report.targetCompanyName !== input.targetCompanyName
-        ) {
+        if (!reportMatchesRequest(report, input)) {
           throw new MelloError("SERVICE_DELIVERY_FAILED", "Mock seller report mismatch");
         }
         const transactionHash = hashCanonicalJson({

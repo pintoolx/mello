@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { buildServicePrompt, SERVICE_SEARCH_EXAMPLES, serviceName, supplierName } from "../../lib/service-catalog";
 import { useRouter } from "next/navigation";
 import {
   useMemo,
@@ -196,7 +197,7 @@ export function NewRequest({
   frozen: boolean;
 }) {
   const router = useRouter();
-  const [target, setTarget] = useState("");
+  const [serviceQuery, setServiceQuery] = useState("");
   const [budget, setBudget] = useState("0.10");
   const [notes, setNotes] = useState("");
   const [requiresTwInvoice, setRequiresTwInvoice] = useState(true);
@@ -256,15 +257,18 @@ export function NewRequest({
           BigInt(budgetAtomic) > BigInt("1000000000000"))
       )
         throw new Error("預算須介於 0.000001 與 1000000 USDC 之間。");
+      const approvalLimitAtomic = previous || !approvalLimit ? null : atomicAmount(approvalLimit);
+      if (approvalLimitAtomic !== null && BigInt(approvalLimitAtomic) > BigInt("1000000000000"))
+        throw new Error("人工核准門檻不可超過 1000000 USDC。");
       const prompt =
         previous?.prompt ??
-        `幫我買一份 ${target.trim()} 的信用報告，預算 ${money(budgetAtomic)} USDC，${requiresTwInvoice ? "要開統編發票" : "不需要統編發票"}，${requiresRegistryCertification ? "需要" : "不需要"} Mello Registry 認證。${notes.trim() ? `\n補充需求：${notes.trim()}` : ""}`;
+        buildServicePrompt({ serviceQuery, budgetDisplay: money(budgetAtomic), requiresTwInvoice, requiresRegistryCertification, notes });
       const input: TaskInput = previous ?? {
         prompt,
         requestKey: crypto.randomUUID(),
         requirements: { requiresTwInvoice, requiresRegistryCertification },
-        ...(approvalLimit
-          ? { approvalLimitAtomic: atomicAmount(approvalLimit) }
+        ...(approvalLimitAtomic !== null
+          ? { approvalLimitAtomic }
           : {}),
         ...(expectedPayTo.trim()
           ? { expectedPayTo: expectedPayTo.trim() }
@@ -295,7 +299,7 @@ export function NewRequest({
     <>
       <PageHeading
         title="新增採購申請"
-        description="建立申請後，先由 Agent 探索服務，再由你選用並送出採購。"
+        description="描述想找的服務，先由 Agent 搜尋，再由你選用並送出採購；不需指定企業。"
       >
         <Link href="/app" className="workspace-button">
           返回清單
@@ -325,28 +329,28 @@ export function NewRequest({
           </div>
           <fieldset className="form-fields" disabled={busy || !!saved}>
             <div className="form-field">
-              <label htmlFor="service">服務類型</label>
-              <input id="service" value="企業信用風險報告" readOnly />
-              <small>
-                目前為 Demo 報告，非正式徵信資料；付款可依後端設定使用 Base
-                Sepolia 測試網。
-              </small>
-            </div>
-            <div className="form-field">
-              <label htmlFor="target">
-                查詢企業名稱 <span>＊</span>
+              <label htmlFor="service-query">
+                搜尋服務 <span>＊</span>
               </label>
               <input
-                id="target"
-                name="target"
+                id="service-query"
+                name="serviceQuery"
+                type="search"
                 autoComplete="off"
-                placeholder="例如：晨光貿易"
+                list="service-search-examples"
+                placeholder="例如：總經分析、BTC 加密市場資訊"
                 required
-                maxLength={100}
-                value={target}
-                onChange={(event) => setTarget(event.target.value)}
+                maxLength={200}
+                value={serviceQuery}
+                onChange={(event) => setServiceQuery(event.target.value)}
                 pattern=".*\S.*"
+                aria-describedby="service-query-hint"
               />
+              <datalist id="service-search-examples">
+                {SERVICE_SEARCH_EXAMPLES.map((name) => <option key={name} value={name} />)}
+              </datalist>
+              <small id="service-query-hint">可搜尋個股分析、總經分析、加密市場資訊、期貨分析。股票代號、幣種或市場可選填，不必填企業名稱。</small>
+              <small>分析內容為 Demo 範例，非即時行情或投資建議；付款可依後端設定使用 Base Sepolia 測試網。</small>
             </div>
             <div className="form-field">
               <label htmlFor="budget">
@@ -356,11 +360,10 @@ export function NewRequest({
                 <input
                   id="budget"
                   name="budget"
-                  type="number"
+                  type="text"
                   inputMode="decimal"
-                  min="0.000001"
-                  max="1000000"
-                  step="0.000001"
+                  autoComplete="off"
+                  pattern="[0-9]+(\.[0-9]{1,6})?"
                   required
                   value={budget}
                   onChange={(event) => setBudget(event.target.value)}
@@ -392,7 +395,7 @@ export function NewRequest({
                 id="notes"
                 rows={4}
                 maxLength={1000}
-                placeholder="例如：用於本次出貨前的信用風險評估。"
+                placeholder="例如：關注亞洲市場，整理主要觀察重點與風險。"
                 value={notes}
                 onChange={(event) => setNotes(event.target.value)}
               />
@@ -404,11 +407,10 @@ export function NewRequest({
                 <label htmlFor="approval-limit">人工核准門檻（USDC）</label>
                 <input
                   id="approval-limit"
-                  type="number"
+                  type="text"
                   inputMode="decimal"
-                  min="0"
-                  max="1000000"
-                  step="0.000001"
+                  autoComplete="off"
+                  pattern="[0-9]+(\.[0-9]{1,6})?"
                   value={approvalLimit}
                   onChange={(event) => setApprovalLimit(event.target.value)}
                   placeholder="例如：0.03"
@@ -438,6 +440,7 @@ export function NewRequest({
           <div className="form-footer">
             <span>建立申請不會立即付款。</span>
             <button
+              type="submit"
               className="workspace-button primary"
               disabled={
                 busy ||
@@ -534,8 +537,9 @@ export function PurchaseList() {
                         {shortId(row.taskId)}
                       </Link>
                       <strong className="cell-title">
-                        {row.selectedService.displayName ?? row.selectedService.sellerLegalName}
+                        {serviceName(row.selectedService)}
                       </strong>
+                      <small>供應商：{supplierName(row.selectedService)}</small>
                       <small>{dateTime(row.createdAt)}</small>
                     </td>
                     <td className="nowrap tabular">

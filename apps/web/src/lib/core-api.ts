@@ -38,6 +38,10 @@ export interface Policy {
 }
 export interface Service {
   displayName?: string | null;
+  sellerDisplayName?: string | null;
+  description?: string | null;
+  category?: string;
+  active?: boolean;
   matchesRequirements?: boolean;
   selectionHash?: string;
   id?: string;
@@ -80,7 +84,9 @@ export interface TaskRow {
 }
 export interface Intent {
   requiresTwInvoice?: boolean;
-  targetCompanyName: string;
+  serviceCategory?: string;
+  serviceQuery?: string;
+  targetCompanyName?: string;
   maxAmount: { atomic: string };
   buyerBusinessId: string;
   costCenter: string;

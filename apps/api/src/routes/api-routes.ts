@@ -4,6 +4,7 @@ import {
   CompanyProfileInputSchema,
   CreateTaskSchema,
   ServiceSelectionSchema,
+  ServiceCategorySchema,
   MELLO_NETWORK,
   MelloError,
   PolicyInputSchema,
@@ -26,7 +27,7 @@ const PaginationSchema = z.object({
   offset: z.coerce.number().int().min(0).default(0),
 });
 const ServiceQuerySchema = z.object({
-  category: z.literal("credit_report").optional(),
+  category: ServiceCategorySchema.optional(),
 });
 const AuditEventQuerySchema = PaginationSchema.extend({
   aggregateType: z.string().trim().min(1).max(32).optional(),
@@ -208,13 +209,15 @@ export function createApiRouter(dependencies: CoreApiDependencies): Router {
   const router = Router();
   const requireDemoAdmin = demoAdmin(dependencies);
 
-  router.get("/registry", async (_request, response) => {
+  router.get("/registry", async (request, response) => {
     if (!dependencies.registry) return notFound("Registry");
-    sendJson(response, 200, { discoveryMode: dependencies.config.SERVICE_DISCOVERY_MODE, catalog: "cdp_bazaar", services: await dependencies.registry.list() });
+    const query = ServiceQuerySchema.parse(request.query);
+    sendJson(response, 200, { discoveryMode: dependencies.config.SERVICE_DISCOVERY_MODE, catalog: "cdp_bazaar", services: await dependencies.registry.list(query.category) });
   });
-  router.get("/registry/discovery", async (_request, response) => {
+  router.get("/registry/discovery", async (request, response) => {
     if (!dependencies.registry) return notFound("Registry");
-    sendJson(response, 200, await dependencies.registry.discover());
+    const query = ServiceQuerySchema.parse(request.query);
+    sendJson(response, 200, await dependencies.registry.discover(true, query.category));
   });
   router.post("/registry/services/:serviceId/verify", requireDemoAdmin, async (request, response) => {
     if (!dependencies.registry) return notFound("Registry");
@@ -296,7 +299,9 @@ export function createApiRouter(dependencies: CoreApiDependencies): Router {
       dependencies.repository.listSellers(),
       dependencies.registry ? dependencies.registry.list() : dependencies.repository.listServices(),
     ]);
-    sendJson(response, 200, { company, policy, sellers, services, discoveryMode: dependencies.config.SERVICE_DISCOVERY_MODE });
+    const activeServices = services.filter((service) =>
+      typeof service === "object" && service !== null && "active" in service && service.active === true);
+    sendJson(response, 200, { company, policy, sellers, services: activeServices, discoveryMode: dependencies.config.SERVICE_DISCOVERY_MODE });
   });
 
   router.get("/company", async (_request, response) => {

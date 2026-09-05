@@ -4,8 +4,10 @@ import {
   type MelloErrorCode,
 } from "@mello/shared";
 import { z } from "zod";
+import { MarketReportSchema } from "../../seller-kit/report.js";
+import { getMarketService, isMarketServiceCategory, type ServiceCategory } from "@mello/shared";
 
-export const PaymentSettlementReportSchema = z
+const LegacyPaymentSettlementReportSchema = z
   .object({
     reportId: z.string().min(1),
     provider: z.string().min(1),
@@ -14,8 +16,17 @@ export const PaymentSettlementReportSchema = z
     riskLevel: z.enum(["LOW", "MEDIUM", "HIGH"]),
     summary: z.string().min(1),
     generatedAt: z.iso.datetime(),
+    // A modern response must never fall through the permissive legacy decoder.
+    reportVersion: z.never().optional(),
+    serviceId: z.never().optional(),
+    serviceCategory: z.never().optional(),
+    serviceQuery: z.never().optional(),
   })
   .passthrough();
+
+export const PaymentSettlementReportSchema = z.union([
+  MarketReportSchema, LegacyPaymentSettlementReportSchema,
+]);
 
 export type PaymentSettlementReport = z.infer<typeof PaymentSettlementReportSchema>;
 
@@ -26,7 +37,10 @@ export interface PreparePaymentInput {
   paymentId: string;
   sellerId: string;
   endpoint: string;
-  targetCompanyName: string;
+  targetCompanyName?: string | undefined;
+  serviceId?: string | undefined;
+  serviceCategory?: ServiceCategory | undefined;
+  serviceQuery?: string | undefined;
   purchaseContextToken: string;
   requiresTwInvoice: boolean;
   network: string;
@@ -48,6 +62,42 @@ export interface PreparePaymentInput {
    * enterprise policy decision. Throwing must abort payment creation.
    */
   onLivePaymentTerms?: ((terms: ValidatedPaymentTerms) => Promise<void>) | undefined;
+}
+
+export type ReportRequestBinding = Pick<PreparePaymentInput,
+  "sellerId" | "serviceId" | "serviceCategory" | "serviceQuery" | "targetCompanyName">;
+
+/** Keep legacy JSON byte shape intact; never invent a company for market reports. */
+export function reportRequestBody(input: ReportRequestBinding & { purchaseContextToken: string }) {
+  if (isMarketServiceCategory(input.serviceCategory)) {
+    const offering = input.serviceId ? getMarketService(input.serviceId) : undefined;
+    if (!offering || offering.category !== input.serviceCategory || offering.sellerId !== input.sellerId ||
+      !input.serviceQuery?.trim() || input.serviceQuery.length > 200) {
+      throw new MelloError("X402_REQUIREMENTS_INVALID", "Market report request binding is incomplete");
+    }
+    return { serviceId: input.serviceId, serviceCategory: input.serviceCategory,
+      serviceQuery: input.serviceQuery.trim(), purchaseContextToken: input.purchaseContextToken };
+  }
+  if ((input.serviceCategory && input.serviceCategory !== "credit_report") ||
+    (input.serviceId && getMarketService(input.serviceId)) || input.serviceQuery !== undefined ||
+    !input.targetCompanyName?.trim()) {
+    throw new MelloError("X402_REQUIREMENTS_INVALID", "Legacy report request requires its original target");
+  }
+  return { targetCompanyName: input.targetCompanyName, purchaseContextToken: input.purchaseContextToken };
+}
+
+export function reportMatchesRequest(report: PaymentSettlementReport, input: ReportRequestBinding): boolean {
+  if (report.provider !== input.sellerId) return false;
+  if (isMarketServiceCategory(input.serviceCategory)) {
+    const offering = input.serviceId ? getMarketService(input.serviceId) : undefined;
+    return report.reportVersion === "market-v1" && report.serviceId === input.serviceId &&
+      report.serviceCategory === input.serviceCategory && report.serviceQuery === input.serviceQuery?.trim() &&
+      offering?.sellerId === input.sellerId && offering.category === input.serviceCategory && report.title === offering.displayName;
+  }
+  return (!input.serviceCategory || input.serviceCategory === "credit_report") &&
+    !(input.serviceId && getMarketService(input.serviceId)) &&
+    report.reportVersion === undefined && typeof input.targetCompanyName === "string" &&
+    report.targetCompanyName === input.targetCompanyName;
 }
 
 export interface ValidatedPaymentTerms {

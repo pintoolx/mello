@@ -2,8 +2,9 @@
 
 import { useMemo, useState } from "react";
 import { dateTime, money, type Settings } from "../../lib/core-api";
+import { serviceName, supplierName } from "../../lib/service-catalog";
 import { RegistryDiscovery, verificationLabel } from "./registry-discovery";
-import { Notice, PageHeading, useResource } from "./shared";
+import { ErrorMessage, Notice, PageHeading, useResource } from "./shared";
 
 type Verified = "all" | "verified" | "unverified";
 type Invoice = "all" | "yes" | "no";
@@ -22,10 +23,13 @@ export function VendorsPage({
   const rows = useMemo(() => {
     const needle = query.trim().toLowerCase();
     return (services ?? []).filter((service) => {
+      if (service.active === false) return false;
       if (
         needle &&
         ![
           service.displayName,
+          service.sellerDisplayName,
+          service.description,
           service.sellerLegalName,
           service.id,
           service.sellerId,
@@ -58,6 +62,8 @@ export function VendorsPage({
           <label className="search-field">
             <span>搜尋供應商或服務</span>
             <input
+              type="search"
+              autoComplete="off"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder="名稱或服務代號"
@@ -86,6 +92,7 @@ export function VendorsPage({
             </select>
           </label>
         </div>
+        <ErrorMessage error={resource.error} autoRefresh />
         {resource.loading ? (
           <Notice title="正在讀取供應商…" />
         ) : !rows.length ? (
@@ -99,6 +106,7 @@ export function VendorsPage({
             <table className="records-table">
               <thead>
                 <tr>
+                  <th>服務</th>
                   <th>供應商</th>
                   <th>報價</th>
                   <th>台灣發票</th>
@@ -111,14 +119,11 @@ export function VendorsPage({
                 {rows.map((service) => (
                   <tr key={service.id}>
                     <td>
-                      <strong>
-                        {service.displayName ?? service.sellerLegalName}
-                      </strong>
-                      {service.displayName && (
-                        <small>供應商：{service.sellerLegalName}</small>
-                      )}
+                      <strong>{serviceName(service)}</strong>
+                      {service.description && <small>{service.description}</small>}
                       <small>{service.id}</small>
                     </td>
+                    <td className="nowrap"><strong>{supplierName(service)}</strong></td>
                     <td className="nowrap">{money(service.priceAtomic)} USDC</td>
                     <td>
                       {service.supportsTwInvoice ? "支援測試介接" : "不支援"}

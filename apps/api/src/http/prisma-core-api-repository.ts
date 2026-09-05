@@ -6,6 +6,7 @@ import {
   MELLO_NETWORK,
   MelloError,
   ServiceRecordSchema,
+  getMarketService,
   redactSensitiveText,
   sanitizedErrorMessage,
   type CompanyProfileInput,
@@ -93,7 +94,17 @@ export function explorerLinksForPurchase(
   };
 }
 
-function normalizedService(
+function catalogDisplay(service: { id: string; sellerId: string; category: string; displayName?: string | null }) {
+  const market = getMarketService(service.id);
+  // Only canonical new identities receive branding. Legacy purchase joins keep
+  // their original service name and legal seller identity, including after archive.
+  if (market && market.sellerId === service.sellerId && market.category === service.category) {
+    return { displayName: market.displayName, sellerDisplayName: market.sellerDisplayName, description: market.description };
+  }
+  return service.displayName ? { displayName: service.displayName } : {};
+}
+
+export function normalizedService(
   service: {
     id: string;
     displayName?: string | null;
@@ -119,7 +130,7 @@ function normalizedService(
 ): unknown {
   return ServiceRecordSchema.parse({
     id: service.id,
-    ...(service.displayName ? { displayName: service.displayName } : {}),
+    ...catalogDisplay(service),
     sellerId: service.sellerId,
     sellerLegalName: service.seller.legalName,
     sellerBusinessId: service.seller.businessId,
@@ -222,7 +233,7 @@ export class PrismaCoreApiRepository implements CoreApiRepository {
   }
 
   async listServices(category?: string): Promise<unknown[]> {
-    const where: Prisma.ServiceWhereInput = {};
+    const where: Prisma.ServiceWhereInput = { active: true, seller: { status: "ACTIVE" } };
     if (category) where.category = category;
     const services = await this.prisma.service.findMany({
       where,
@@ -358,7 +369,7 @@ export class PrismaCoreApiRepository implements CoreApiRepository {
         taskStatus: purchase.task.status,
         selectedService: {
           id: purchase.service.id,
-          ...(purchase.service.displayName ? { displayName: purchase.service.displayName } : {}),
+          ...catalogDisplay(purchase.service),
           sellerId: purchase.service.sellerId,
           sellerLegalName: purchase.service.seller.legalName,
           priceAtomic: purchase.service.priceAtomic,

@@ -31,12 +31,23 @@ export interface SellerServerConfig {
   clock?: () => Date;
 }
 
-export interface CreditReportRequest {
+export interface LegacyCreditReportRequest {
   targetCompanyName: string;
   purchaseContextToken?: string | undefined;
 }
 
-export interface CreditReport {
+export type MarketServiceCategory = "stock_analysis" | "macro_analysis" | "crypto_market" | "futures_analysis";
+
+export interface MarketReportRequest {
+  serviceId: string;
+  serviceCategory: MarketServiceCategory;
+  serviceQuery: string;
+  purchaseContextToken?: string | undefined;
+}
+
+export type CreditReportRequest = LegacyCreditReportRequest | MarketReportRequest;
+
+export interface LegacyCreditReport {
   reportId: string;
   provider: string;
   targetCompanyName: string;
@@ -47,6 +58,24 @@ export interface CreditReport {
   paymentMode: PaymentMode;
   isDemo: true;
 }
+
+export interface MarketReport {
+  reportVersion: "market-v1";
+  reportId: string;
+  provider: string;
+  serviceId: string;
+  serviceCategory: MarketServiceCategory;
+  serviceQuery: string;
+  title: string;
+  summary: string;
+  sections: Array<{ title: string; points: string[] }>;
+  generatedAt: string;
+  paymentMode: PaymentMode;
+  isDemo: true;
+  disclaimer: "模擬研究內容，非即時市場資料，亦非投資建議。";
+}
+
+export type CreditReport = LegacyCreditReport | MarketReport;
 
 export interface FingerprintInput {
   sellerId: string;

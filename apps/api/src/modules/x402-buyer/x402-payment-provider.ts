@@ -50,6 +50,8 @@ import type {
 } from "./payment-provider.js";
 import {
   PaymentSettlementReportSchema,
+  reportMatchesRequest,
+  reportRequestBody,
   PendingSettlementVerificationError,
   SettledPaymentDeliveryError,
   assertAuthorizationTimeoutWithinPolicy,
@@ -499,10 +501,7 @@ export class X402PaymentProvider implements PaymentProvider {
         "x-mello-task-id": input.taskId,
         ...(input.requestId ? { "x-request-id": input.requestId } : {}),
       },
-      body: JSON.stringify({
-        targetCompanyName: input.targetCompanyName,
-        purchaseContextToken: input.purchaseContextToken,
-      }),
+      body: JSON.stringify(reportRequestBody(input)),
     });
     void requestPromise.then(
       () => {
@@ -607,14 +606,11 @@ export class X402PaymentProvider implements PaymentProvider {
           if (!parsedReport.success) {
             throw new MelloError(
               "SERVICE_DELIVERY_FAILED",
-              "Seller returned an invalid credit report after payment settled",
+              "Seller returned an invalid report after payment settled",
               { details: parsedReport.error.issues },
             );
           }
-          if (
-            parsedReport.data.targetCompanyName !== input.targetCompanyName ||
-            parsedReport.data.provider !== input.sellerId
-          ) {
+          if (!reportMatchesRequest(parsedReport.data, input)) {
             throw new MelloError(
               "SERVICE_DELIVERY_FAILED",
               "Seller report does not match the request",
