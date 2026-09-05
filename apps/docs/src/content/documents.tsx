@@ -297,6 +297,13 @@ export const documents: Document[] = [
               保留的結算證據；兩者用途不同。案件詳情另保留收款地址、網路及授權雜湊。
             </p>
             <p>
+              授權雜湊來自 EIP-3009 的 <code>transferWithAuthorization</code>，
+              也就是 x402 在 EVM 上採用的免 gas 授權方式。案件保留該授權的有效期間、
+              nonce、EIP-712 網域與 typed data 雜湊，並與結算交易雜湊綁定。
+              授權與結算因此是兩份可以分別查核的證據：前者說明這筆支出當初被授權的範圍，
+              後者說明資金實際如何移轉。
+            </p>
+            <p>
               <code>SETTLED</code> 代表 Provider 已確認結算；若模式為
               mock，它只是模擬結算，不是鏈上資金移轉。
               <code>SETTLEMENT_PENDING</code>{" "}
@@ -507,6 +514,9 @@ export const documents: Document[] = [
             <li>重新整理恢復同一案件，同一 task 的冪等重跑。</li>
             <li>存取碼登入、付款前人工核准、持久化的新付款凍結。</li>
             <li>保存 request key，建立回應遺失時找回原申請，不自動另建付款。</li>
+            <li>
+              記錄 EIP-3009 授權內容並與結算交易綁定，作為可獨立查核的付款憑證。
+            </li>
           </ul>
         ),
       },
@@ -537,6 +547,13 @@ export const documents: Document[] = [
             <li>SSO、多租戶及正式財務職務分權管理。</li>
             <li>
               Marketplace、Seller 上架後台、自架 facilitator、主網資金保管。
+            </li>
+            <li>
+              ERC-8004 的 Identity、Reputation 與 Validation Registry。本專案沒有
+              註冊 Agent 身分，也沒有寫入信譽或驗證登錄。該規格將付款視為正交主題，
+              並在回饋結構中留有 <code>proofOfPayment</code>{" "}
+              欄位供 x402 付款證明使用；本專案產出的授權與結算憑證屬於可供其引用的內容，
+              但兩者尚未對接。
             </li>
           </ul>
         ),
