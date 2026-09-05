@@ -102,7 +102,8 @@ migrations, and explicitly set any existing `MOCK_INVOICE_FAIL_ONCE=true` runtim
 variable to false. Code defaults do not override a deployed explicit value.
 The cross-kind index intentionally refuses pre-existing overlapping active jobs;
 investigate instead of deleting work. Do not run old workers alongside new
-`DISCOVER_TASK` jobs. Merge/deployment remains paused while this change is reviewed.
+`DISCOVER_TASK` jobs. Merge and deployment are authorized for this rollout;
+service certification and paid indexing still require separate approval.
 
 The catalog transition refuses in-flight work, uncertain payments, custom legacy
 identities/prices, or collisions with pre-existing new IDs. Its audit marker makes

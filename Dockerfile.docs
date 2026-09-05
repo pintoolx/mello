@@ -18,6 +18,7 @@ ENV HOSTNAME=0.0.0.0
 ENV PORT=8080
 COPY --from=build --chown=node:node /workspace/apps/docs/.next/standalone ./
 COPY --from=build --chown=node:node /workspace/apps/docs/.next/static ./apps/docs/.next/static
+COPY --from=build --chown=node:node /workspace/apps/docs/public ./apps/docs/public
 USER node
 EXPOSE 8080
 CMD ["node", "apps/docs/server.js"]
