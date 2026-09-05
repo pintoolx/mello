@@ -1,8 +1,11 @@
-"""Authenticated workspace merge regression. Local mock services only; no testnet spending.
+"""Authenticated workspace regression. Mock by default; explicitly gated Base Sepolia live mode.
 
-Requires Python Playwright + Chromium, both built sites, an isolated API/Seller stack,
-MELLO_ACCESS_CODE, and MOCK_INVOICE_FAIL_ONCE=true. Keeps all created records.
+Requires Python Playwright + Chromium, both built sites, MELLO_ACCESS_CODE, and
+MOCK_INVOICE_FAIL_ONCE=true. Default: isolated local mock stack. Live mode needs
+an explicitly approved HTTPS deployment and verified Base Sepolia registry;
+it retains a crash journal and refuses a blind restart. Keeps all created records.
 """
+import argparse
 import json
 import os
 import re
@@ -13,24 +16,48 @@ from uuid import uuid4
 
 from playwright.sync_api import expect, sync_playwright
 
+parser = argparse.ArgumentParser()
+parser.add_argument("--live", action="store_true", help="Two 0.05 Test USDC purchases on the approved Base Sepolia deployment")
+args = parser.parse_args()
 base = os.environ.get("MELLO_E2E_URL", "http://127.0.0.1:3400").rstrip("/")
 docs = os.environ.get("MELLO_E2E_DOCS_URL", "http://127.0.0.1:4174").rstrip("/")
-for url in (base, docs):
-    assert urlparse(url).hostname in ("localhost", "127.0.0.1", "::1"), "Local mock regression only"
+registry = os.environ.get("MELLO_E2E_REGISTRY_ADDRESS", "")
+if args.live:
+    assert os.environ.get("MELLO_TESTNET_PAYMENT_APPROVED") == "true", "Live mode needs approval for at most 0.10 Test USDC"
+    assert base == os.environ.get("WEB_PUBLIC_URL", "").rstrip("/"), "Live origin must match the approved deployment"
+    assert all(urlparse(url).scheme == "https" for url in (base, docs)), "Live sites must use HTTPS"
+    assert re.fullmatch(r"0x[\da-fA-F]{40}", registry), "Set the verified Base Sepolia registry address"
+else:
+    for url in (base, docs):
+        assert urlparse(url).hostname in ("localhost", "127.0.0.1", "::1"), "Local mock regression only"
 code = os.environ["MELLO_ACCESS_CODE"]
-output = Path(os.environ.get("MELLO_E2E_OUTPUT", "/tmp/mello-workspace-merge"))
+output = Path(os.environ.get("MELLO_E2E_OUTPUT", "/tmp/mello-workspace-live" if args.live else "/tmp/mello-workspace-merge"))
+if args.live and (output / "report.json").exists():
+    raise RuntimeError("Existing live journal found. Inspect and resume its task IDs; never blindly restart paid acceptance.")
 output.mkdir(parents=True, exist_ok=True)
-report = {"checks": [], "tasks": [], "pageErrors": [], "ok": False}
+report = {"live": args.live, "registry": registry if args.live else None, "checks": [], "tasks": [], "purchases": [], "createRequests": [], "pageErrors": [], "ok": False}
+
+def checkpoint():
+    (output / "report.json").write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n")
+
+checkpoint()
 
 with sync_playwright() as p:
     browser = p.chromium.launch()
     context = browser.new_context(viewport={"width": 1280, "height": 900})
     page = context.new_page()
+    def record_create(request):
+        if request.method == "POST" and request.url == base + "/api/v1/tasks":
+            # Persist the request key before receiving the create response. No cookies or secrets.
+            report["createRequests"].append(request.post_data_json)
+            checkpoint()
+    page.on("request", record_create)
     page.on("pageerror", lambda error: report["pageErrors"].append(str(error)))
     expect.set_options(timeout=15000)
 
     def check(name):
         report["checks"].append(name)
+        checkpoint()
         print(name, flush=True)
 
     def request(path, method="GET", data=None, status=None):
@@ -42,7 +69,7 @@ with sync_playwright() as p:
         return request("/tasks/" + task_id)
 
     def wait_task(task_id, statuses):
-        deadline = time.monotonic() + 70
+        deadline = time.monotonic() + (240 if args.live else 70)
         while time.monotonic() < deadline:
             current = task(task_id)
             if current["status"] in statuses:
@@ -56,7 +83,8 @@ with sync_playwright() as p:
         assert page.evaluate("document.documentElement.scrollWidth <= innerWidth"), (name, width, "horizontal overflow")
         page.screenshot(path=str(output / f"{name}-{width}.png"), full_page=True)
 
-    def open_form(budget="0.10", approval="", pay_to=""):
+    def open_form(budget=None, approval="", pay_to=""):
+        budget = budget or ("0.05" if args.live else "0.10")
         page.goto(base + "/app/tasks/new", wait_until="networkidle")
         expect(page.get_by_label("查詢企業名稱")).to_be_visible()
         page.get_by_label("查詢企業名稱").fill("晨光貿易")
@@ -75,6 +103,7 @@ with sync_playwright() as p:
         current = task(task_id)
         assert current["status"] == "CREATED" and current["purchase"] is None
         report["tasks"].append(task_id)
+        checkpoint()
         return task_id
 
     def run(task_id):
@@ -95,6 +124,18 @@ with sync_playwright() as p:
         assert before == (after["purchaseId"], after["paymentAuthorization"]["paymentId"], after["payment"]["transactionHash"])
         assert after["invoice"]["status"] == "ISSUED_DEMO"
         assert after["reconciliation"]["status"] == "MATCHED"
+        assert after["expectedAmountAtomic"] == "50000"
+        assert {a["kind"] for a in after["anchors"] if a["status"] == "CONFIRMED"} >= {"AUTHORIZE", "FINALIZE"}
+        if args.live:
+            assert after["modes"]["payment"] == "x402" and after["modes"]["anchor"] == "onchain"
+            assert after["network"] == "eip155:84532"
+            assert after["token"]["address"].lower() == "0x036cbd53842c5426634e7929541ec2318f3dcf7e"
+            assert re.fullmatch(r"0x[\da-fA-F]{64}", after["payment"]["transactionHash"])
+            assert after["explorerLinks"]["payment"] == "https://sepolia.basescan.org"
+            expect(page.get_by_role("link", name=after["payment"]["transactionHash"] + " ↗", exact=True)).to_have_attribute("href", "https://sepolia.basescan.org/tx/" + after["payment"]["transactionHash"])
+        report["purchases"].append({"taskId": task_id, "purchaseId": after["purchaseId"], "paymentHash": after["payment"]["transactionHash"], "amountAtomic": after["expectedAmountAtomic"], "anchors": after["anchors"]})
+        assert len(report["purchases"]) <= 2
+        checkpoint()
         expect(page.get_by_text("已完成", exact=True)).to_be_visible()
         return done
 
@@ -113,14 +154,30 @@ with sync_playwright() as p:
         page.get_by_role("button", name="登入工作區", exact=True).click()
         expect(page.get_by_role("heading", name="採購申請", exact=True)).to_be_visible()
         health = request("/demo/health")
-        assert all(health["modes"][key] == mode for key, mode in {"payment": "mock", "anchor": "mock", "agent": "demo", "invoice": "mock"}.items()), "Refusing non-mock services"
+        expected_modes = {"payment": "x402" if args.live else "mock", "anchor": "onchain" if args.live else "mock", "agent": "demo", "invoice": "mock"}
+        assert all(health["modes"][key] == mode for key, mode in expected_modes.items()), "Unexpected backend modes"
+        settings = request("/settings")
+        if args.live:
+            assert health["status"] == "ok", "All live dependencies must be healthy before spending"
+            assert health["modes"]["offchainAuthorizationFallbackEnabled"] is False
+            assert health["checks"]["baseRpc"]["details"] == {"chainId": 84532, "loopback": False}
+            assert health["checks"]["contract"]["details"]["address"].lower() == registry.lower()
+            assert health["checks"]["invoice"]["details"]["failOnceEnabled"] is True
+            assert int(health["checks"]["buyerWallet"]["details"]["usdcBalanceAtomic"]) >= 100000
+            assert settings["policy"]["allowedNetworks"] == ["eip155:84532"]
+            invoicing = [service for service in settings["services"] if service["supportsTwInvoice"]]
+            assert len(invoicing) == 1 and invoicing[0]["id"] == "credit-report-b" and invoicing[0]["priceAtomic"] == "50000"
         assert request("/controls")["paymentsFrozen"] is False, "Start with an unfrozen isolated API"
         cookie = next(item for item in context.cookies() if item["name"] == "mello_session")
         assert cookie["httpOnly"] and cookie["sameSite"] == "Strict"
+        if args.live:
+            assert cookie["secure"]
         assert context.request.put(base + "/api/v1/controls", data={"paymentsFrozen": True}, headers={"origin": "https://untrusted.example"}).status == 403
         request("/demo/reset", "POST", {}, status=404)
         check("login, HttpOnly session, anonymous rejection, CSRF and reset allowlist")
         initial_purchases = request("/purchases?limit=1")["total"]
+        report["initialPurchaseCount"] = initial_purchases
+        checkpoint()
 
         open_form()
         first_id = create()
@@ -154,7 +211,7 @@ with sync_playwright() as p:
         expect(page.get_by_role("button", name="凍結新付款", exact=True)).to_be_enabled()
         check("freeze persists across reload and rejects new requests server-side")
 
-        open_form(budget="0.03")
+        open_form(budget="0.03", approval="0")
         captured = {}
 
         def lose_create_response(route):
@@ -171,6 +228,8 @@ with sync_playwright() as p:
         expect(page.get_by_role("button", name="找回原申請", exact=True)).to_be_enabled()
         page.unroute(base + "/api/v1/tasks", lose_create_response)
         assert captured.get("taskId")
+        report["tasks"].append(captured["taskId"])
+        checkpoint()
         count = request("/tasks?limit=1")["total"]
         page.reload(wait_until="networkidle")
         expect(page.get_by_role("button", name="建立申請", exact=True)).to_be_disabled()
@@ -182,7 +241,7 @@ with sync_playwright() as p:
         assert denied["status"] == "REJECTED" and denied["purchase"] is None
         check("lost create response recovers after reload without a second task; low budget rejects")
 
-        open_form(pay_to="0x0000000000000000000000000000000000000001")
+        open_form(approval="0", pay_to="0x0000000000000000000000000000000000000001")
         mismatch_id = create()
         mismatch = run(mismatch_id)
         assert mismatch["status"] == "REJECTED" and mismatch["purchase"] is None
@@ -199,7 +258,7 @@ with sync_playwright() as p:
             screenshot("approval", width)
         page.get_by_role("button", name="核准此報價並繼續", exact=True).click()
         # Approval can initially return the old ACTION_REQUIRED revision; wait for a purchase.
-        deadline = time.monotonic() + 70
+        deadline = time.monotonic() + (240 if args.live else 70)
         while task(approval_id)["purchase"] is None and time.monotonic() < deadline:
             page.wait_for_timeout(300)
         finish_invoice(approval_id)
@@ -237,7 +296,7 @@ with sync_playwright() as p:
     finally:
         if not report["ok"]:
             page.screenshot(path=str(output / "failure.png"), full_page=True)
-        (output / "report.json").write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n")
+        checkpoint()
         browser.close()
 
 print(json.dumps({"ok": report["ok"], "checks": len(report["checks"]), "output": str(output)}, ensure_ascii=False))

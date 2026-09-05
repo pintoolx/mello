@@ -105,7 +105,7 @@ python3 apps/web/scripts/workspace-e2e.py
 npm test
 ```
 
-`workspace-e2e.py` 只允許本地 mock，保留兩筆成功採購、低預算與地址不符的拒絕案件，涵蓋登入／CSRF、付款凍結、人工核准、發票重試不重付、建立回應遺失後找回原單、session 失效與 375／768／1280 px。只在斷線案例中攔截已實際保存的 create 回應，不偽造付款結果。`demo-e2e.py` 僅保留供先前 Railway 舊版控制台驗收，不適用新版頁面。
+`workspace-e2e.py` 預設只允許本地 mock，保留兩筆成功採購、低預算與地址不符的拒絕案件，涵蓋登入／CSRF、付款凍結、人工核准、發票重試不重付、建立回應遺失後找回原單、session 失效與 375／768／1280 px。只在斷線案例中攔截已實際保存的 create 回應，不偽造付款結果。明確批准的 Base Sepolia `--live` 模式、兩筆合計 0.10 Test USDC 的限制與只讀鏈上驗證見 [部署驗收說明](docs/RAILWAY.md#explicitly-approved-live-acceptance)。`demo-e2e.py` 僅保留供先前 Railway 舊版控制台驗收，不適用新版頁面。
 
 ## Backend teammate workflow
 
