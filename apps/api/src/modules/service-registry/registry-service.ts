@@ -236,7 +236,13 @@ export class ServiceRegistry {
   async assertPurchasable(serviceId: string, evidence: DiscoveryEvidence): Promise<void> {
     const service = await this.assertCurrentBinding(this.prisma, serviceId, evidence);
     if (evidence.source === "local_registry") return;
-    const result = await this.bazaar.search({ endpoint: service.endpoint, payTo: service.payToAddress });
+    // Recheck through the same category search as discovery; endpoint-only
+    // results may still contain an older input schema for the same resource.
+    const result = await this.bazaar.search({
+      query: serviceDiscoveryQuery(service.category),
+      endpoint: service.endpoint,
+      payTo: service.payToAddress,
+    });
     if (!result.resources.some((resource) => matchingBazaarResource(service, resource))) {
       throw new MelloError("BAZAAR_SERVICE_NOT_FOUND", "Bazaar 已找不到原核准服務或付款條件已變更；未釋出付款。", { statusCode: 409 });
     }
