@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { ProcurementControls } from "../controls/procurement-controls.js";
+import { CdpBazaarClient } from "../service-registry/bazaar-client.js";
+import { ServiceRegistry } from "../service-registry/registry-service.js";
 import {
   AnchorSubmissionPersistenceError,
   AnchorTransactionRevertedError,
@@ -64,6 +66,7 @@ import {
 const MIN_RETRY_CLAIM_LEASE_MS = 10 * 60_000;
 
 export interface PurchaseWorkflowDependencies {
+  registry?: ServiceRegistry;
   controls?: ProcurementControls;
   prisma: PrismaClient;
   config: AppConfig;
@@ -120,11 +123,13 @@ const RUNNING_TASK_STATUSES = [
 ] as const;
 
 export class PurchaseWorkflow {
+  private readonly registry: ServiceRegistry;
   private readonly now: () => Date;
   private readonly invoiceTimeoutMs: number;
 
   constructor(private readonly dependencies: PurchaseWorkflowDependencies) {
     this.now = dependencies.now ?? (() => new Date());
+    this.registry = dependencies.registry ?? new ServiceRegistry(dependencies.prisma, new CdpBazaarClient({ timeoutMs: dependencies.config.BAZAAR_TIMEOUT_MS }), this.now);
     this.invoiceTimeoutMs = dependencies.invoiceTimeoutMs ?? 10_000;
   }
 
@@ -776,7 +781,7 @@ export class PurchaseWorkflow {
         allowedSellerIds: policyRecord.allowedSellerIds,
       }),
     };
-    const services = serviceRecords.map((service) =>
+    let services = serviceRecords.map((service) =>
       ServiceRecordSchema.parse({
         ...service,
         sellerLegalName: service.seller.legalName,
@@ -797,7 +802,27 @@ export class PurchaseWorkflow {
       usedFallbackParser: parsed.usedFallback,
     });
 
-    const candidates = evaluateCandidates({ intent: parsed.intent, policy, services });
+    const discovery = config.SERVICE_DISCOVERY_MODE === "bazaar" ? await this.registry.discover() : null;
+    if (discovery) services = discovery.services;
+    await appendAuditEvent(prisma, {
+      aggregateType: "TASK", aggregateId: taskId, taskId, requestId, stage: "DISCOVERING",
+      eventType: "SERVICE_DISCOVERY_COMPLETED",
+      payload: discovery ? {
+        source: discovery.source, fetchedAt: discovery.fetchedAt,
+        partialResults: discovery.partialResults, discoveredResourceCount: discovery.discoveredResourceCount,
+        unregisteredResourceCount: discovery.unregisteredResourceCount, rejectedResourceCount: discovery.rejectedResourceCount,
+        localFallbackUsed: false,
+      } : { source: "local_demo", localFallbackUsed: false, bazaarQueried: false },
+    });
+    const candidates = evaluateCandidates({ intent: parsed.intent, policy, services }).map((candidate) => {
+      const assessment = discovery?.assessments.find((item) => item.serviceId === candidate.serviceId);
+      if (!assessment) return candidate;
+      const reasons = [...(candidate.eligible ? [] : candidate.reasonCodes), ...assessment.reasonCodes];
+      return { ...candidate, discoverySource: "cdp_bazaar", verificationStatus: assessment.verification.status,
+        eligible: reasons.length === 0, reasonCodes: reasons.length ? reasons : ["CANDIDATE_ELIGIBLE", "BAZAAR_VERIFICATION_MATCHED"],
+        humanSummary: reasons.length ? `未通過：${reasons.join("、")}` : `${candidate.sellerLegalName} 的 Bazaar 服務、Mello 認證與企業政策均通過。`,
+      };
+    });
     await this.setTaskStage(
       taskId,
       "EVALUATING",
@@ -840,6 +865,8 @@ export class PurchaseWorkflow {
       (service) => service.id === selectedCandidate.serviceId,
     );
     if (!selectedService) throw new Error("Selected registry service disappeared");
+    const discoveryEvidence = discovery?.assessments.find((item) => item.serviceId === selectedService.id)?.evidence;
+    if (discovery && !discoveryEvidence) throw new MelloError("SERVICE_VERIFICATION_REQUIRED", "服務缺少 Bazaar 認證證據。");
 
     if (this.dependencies.controls && !await this.dependencies.controls.assess(taskId, selectedService, requestId)) return;
 
@@ -912,6 +939,7 @@ export class PurchaseWorkflow {
           serviceId: selectedService.id,
           paymentId,
           ...capturePurchaseRuntimeEvidence(config),
+          ...(discoveryEvidence ? { discoveryEvidence: jsonValue(discoveryEvidence) } : {}),
           expectedAmountAtomic: selectedService.priceAtomic,
           network: selectedService.network,
           tokenSymbol: selectedService.tokenSymbol,
@@ -1039,6 +1067,7 @@ export class PurchaseWorkflow {
 
     let prepared: PreparedPayment;
     try {
+      if (discoveryEvidence) await this.registry.assertPurchasable(selectedService.id, discoveryEvidence);
       prepared = await paymentProvider.prepare({
         taskId,
         ...(requestId ? { requestId } : {}),
@@ -1058,6 +1087,7 @@ export class PurchaseWorkflow {
         maximumValidBefore: maximumAuthorizationValidBefore(expiresAt),
         expectedFacilitatorUrl: config.X402_FACILITATOR_URL,
         onLivePaymentTerms: async (livePaymentTerms) => {
+          if (discoveryEvidence) await this.registry.assertPurchasable(selectedService.id, discoveryEvidence);
           const decision = evaluateLiveTerms(livePaymentTerms);
           if (decision.approved) return;
           await persistLiveTermsRejection(livePaymentTerms, decision);
@@ -1384,7 +1414,10 @@ export class PurchaseWorkflow {
     try {
       settlement = await input.prepared.submit({
         onBeforePaidRequest: async () => {
-          await this.dependencies.controls?.claimPaymentRelease(input.taskId, input.purchaseId, input.requestId);
+          await this.registry.assertPurchase(input.purchaseId, this.dependencies.config.SERVICE_DISCOVERY_MODE === "bazaar");
+          await this.registry.withPurchaseRelease(input.purchaseId, this.dependencies.config.SERVICE_DISCOVERY_MODE === "bazaar", async (tx) => {
+            await this.dependencies.controls?.claimPaymentRelease(input.taskId, input.purchaseId, input.requestId, tx);
+          }, input.requestId);
           await this.appendPaymentLifecycleEvent({
             taskId: input.taskId,
             purchaseId: input.purchaseId,
@@ -1601,6 +1634,7 @@ export class PurchaseWorkflow {
     requestId?: string,
   ): Promise<void> {
     const { anchorClient, config, paymentProvider, prisma } = this.dependencies;
+    await this.registry.assertPurchase(purchase.id, config.SERVICE_DISCOVERY_MODE === "bazaar");
     if (anchorClient.mode === "disabled") {
       await this.markActionRequired(
         purchase.taskId,
@@ -1818,6 +1852,7 @@ export class PurchaseWorkflow {
         maximumValidBefore: maximumAuthorizationValidBefore(expiresAt),
         expectedFacilitatorUrl: config.X402_FACILITATOR_URL,
         onLivePaymentTerms: async (livePaymentTerms) => {
+          await this.registry.assertPurchase(purchase.id, config.SERVICE_DISCOVERY_MODE === "bazaar");
           const decision = evaluateRetryLiveTerms(livePaymentTerms);
           if (decision.approved) return;
           await persistRetryLiveTermsRejection(livePaymentTerms, decision);

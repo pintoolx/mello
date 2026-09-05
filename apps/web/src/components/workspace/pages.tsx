@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { RegistryDiscovery, verificationLabel } from "./registry-discovery";
 import { useRouter } from "next/navigation";
 import {
   useMemo,
@@ -695,6 +696,7 @@ export function PolicyPage({
                     <th>報價</th>
                     <th>台灣發票</th>
                     <th>政策白名單</th>
+                    <th>Mello 認證</th>
                     <th>登錄收款地址</th>
                   </tr>
                 </thead>
@@ -716,6 +718,10 @@ export function PolicyPage({
                           ? "已列入"
                           : "未列入"}
                       </td>
+                      <td>
+                        {verificationLabel(service.verification?.status)}
+                        {service.verification?.expiresAt && <small>期限：{dateTime(service.verification.expiresAt)}</small>}
+                      </td>
                       <td className="record-id">{service.payToAddress}</td>
                     </tr>
                   ))}
@@ -723,8 +729,9 @@ export function PolicyPage({
               </table>
             </div>
           </section>
+          <RegistryDiscovery mode={resource.data?.discoveryMode} />
           <p className="page-footnote">
-            政策僅供查閱；人工核准在待處理案件中進行，且不會覆蓋公司政策限制。
+            Mello 認證是人工範圍審核，不代表正式 KYB 或合法發票認證。政策白名單與商家認證分別檢查；人工核准不會覆蓋任一限制。
           </p>
         </>
       ) : (

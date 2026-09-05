@@ -16,6 +16,8 @@ import type {
 import { PrismaCoreApiRepository } from "./http/prisma-core-api-repository.js";
 import { logger as defaultLogger } from "./logger.js";
 import { ProcurementControls } from "./modules/controls/procurement-controls.js";
+import { CdpBazaarClient, type BazaarDiscovery } from "./modules/service-registry/bazaar-client.js";
+import { ServiceRegistry } from "./modules/service-registry/registry-service.js";
 import {
   MockInvoiceAdapter,
   type InvoiceAdapter,
@@ -36,6 +38,7 @@ import {
 } from "./modules/workflow-jobs/index.js";
 
 export interface CoreApiBootstrapOverrides {
+  bazaar?: BazaarDiscovery;
   config?: AppConfig | undefined;
   prisma?: PrismaClient | undefined;
   logger?: Logger | undefined;
@@ -143,7 +146,9 @@ export function createCoreApiDependencies(
   const invoiceAdapter = overrides.invoiceAdapter ?? createInvoiceAdapter(config);
   const anchorClient = overrides.anchorClient ?? createAnchorClient(config);
   const controls = new ProcurementControls(prisma);
+  const registry = new ServiceRegistry(prisma, overrides.bazaar ?? new CdpBazaarClient({ timeoutMs: config.BAZAAR_TIMEOUT_MS }));
   const workflow = new PurchaseWorkflow({
+    registry,
     controls,
     prisma,
     config,
@@ -182,6 +187,7 @@ export function createCoreApiDependencies(
     );
 
   return {
+    registry,
     controls,
     config,
     repository,

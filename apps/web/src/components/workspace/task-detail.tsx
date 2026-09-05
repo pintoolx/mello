@@ -304,6 +304,7 @@ export function TaskDetail({
                               <small>
                                 {candidate.serviceId ?? candidate.id}
                               </small>
+                              {candidate.discoverySource === "cdp_bazaar" && <small>Bazaar 候選 · {candidate.verificationStatus === "VERIFIED" ? "認證有效" : "認證未通過"}</small>}
                             </td>
                             <td className="nowrap">
                               {money(candidate.priceAtomic)} USDC
@@ -465,6 +466,13 @@ function PurchaseRecords({
             <Field label="採購服務" mono>
               {purchase.selectedService.id}
             </Field>
+            <Field label="服務發現來源">
+              {purchase.discoveryEvidence?.source === "cdp_bazaar" ? "CDP Bazaar" : "本地 Demo／歷史案件"}
+            </Field>
+            {purchase.discoveryEvidence && <>
+              <Field label="當時認證版本">{purchase.discoveryEvidence.verificationRevision}</Field>
+              <Field label="Bazaar 查詢時間">{dateTime(purchase.discoveryEvidence.fetchedAt)}</Field>
+            </>}
             <Field label="服務報價">
               {money(purchase.expectedAmountAtomic)} USDC
             </Field>

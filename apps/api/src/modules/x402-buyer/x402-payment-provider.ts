@@ -493,6 +493,7 @@ export class X402PaymentProvider implements PaymentProvider {
     const paidFetch = wrapFetchWithPayment(this.fetchImplementation, client);
     const requestPromise = paidFetch(input.endpoint, {
       method: "POST",
+      redirect: "error",
       headers: {
         "content-type": "application/json",
         "x-mello-task-id": input.taskId,

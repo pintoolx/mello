@@ -13,6 +13,10 @@ export const CreditReportRequestSchema = z
   })
   .strict();
 
+export const PublicCreditReportRequestSchema = CreditReportRequestSchema.extend({
+  purchaseContextToken: CreditReportRequestSchema.shape.purchaseContextToken.optional(),
+});
+
 export const CreditReportSchema = z
   .object({
     reportId: z.string().regex(/^rpt_[a-f0-9]{20}$/),

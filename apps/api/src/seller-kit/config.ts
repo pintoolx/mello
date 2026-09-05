@@ -2,6 +2,7 @@ import type { Network } from "@x402/core/types";
 import { BASE_SEPOLIA_USDC, MELLO_NETWORK, USDC_DECIMALS } from "@mello/shared";
 import { z } from "zod";
 import type { PaymentMode, SellerServerConfig } from "./types.js";
+import { isPublicServiceEndpoint } from "../modules/service-registry/verification.js";
 
 const SellerConfigValuesSchema = z.object({
   sellerId: z.string().regex(/^seller-[a-z0-9-]+$/),
@@ -9,6 +10,7 @@ const SellerConfigValuesSchema = z.object({
   port: z.number().int().min(1).max(65_535),
   bindHost: z.string().trim().min(1).optional(),
   publicUrl: z.url(),
+  bazaarEnabled: z.boolean().optional(),
   paymentMode: z.enum(["mock", "x402"]),
   facilitatorUrl: z.url(),
   network: z.string().regex(/^[a-z0-9]+:[a-zA-Z0-9-]+$/),
@@ -34,6 +36,10 @@ export function assertSellerServerConfig(
   config: SellerServerConfig,
 ): SellerServerConfig {
   SellerConfigValuesSchema.parse(config);
+  if (config.bazaarEnabled && (config.paymentMode !== "x402" ||
+    !isPublicServiceEndpoint(`${config.publicUrl.replace(/\/$/, "")}/v1/credit-report`))) {
+    throw new Error("Bazaar publishing requires x402 mode and a public HTTPS seller URL");
+  }
   if (
     config.paymentMode === "x402" &&
     UNSAFE_X402_PAY_TO_ADDRESSES.has(config.payToAddress.toLowerCase())
@@ -75,6 +81,12 @@ export function readPaymentMode(value: string | undefined): PaymentMode {
   if (value === undefined || value === "") return "mock";
   if (value === "mock" || value === "x402") return value;
   throw new Error(`Unsupported PAYMENT_MODE: ${value}`);
+}
+
+export function readBazaarEnabled(value: string | undefined): boolean {
+  if (value === undefined || value === "" || value === "false") return false;
+  if (value === "true") return true;
+  throw new Error("BAZAAR_PUBLIC_ENABLED must be true or false");
 }
 
 export function readNetwork(value: string | undefined, fallback: Network): Network {

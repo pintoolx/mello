@@ -34,8 +34,12 @@ export interface Service {
   eligible?: boolean;
   reasonCodes?: string[];
   humanSummary?: string;
+  discoverySource?: string;
+  verificationStatus?: string;
+  verification?: { status: string; expiresAt: string | null; revision: number | null; bindingHash: string };
 }
 export interface Settings {
+  discoveryMode?: "local_demo" | "bazaar";
   company: Company | null;
   policy: Policy | null;
   services: Service[];
@@ -66,6 +70,7 @@ export interface Intent {
   usedDemoDefaultTarget?: boolean;
 }
 export interface Purchase {
+  discoveryEvidence?: { source: "cdp_bazaar"; fetchedAt: string; resource: string; verificationRevision: number; bindingHash: string } | null;
   purchaseId: string;
   taskId: string;
   status: string;

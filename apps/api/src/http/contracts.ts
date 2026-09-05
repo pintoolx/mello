@@ -6,6 +6,7 @@ import type {
 } from "@mello/shared";
 import type { AppConfig } from "../config.js";
 import type { ProcurementControls } from "../modules/controls/procurement-controls.js";
+import type { ServiceRegistry } from "../modules/service-registry/registry-service.js";
 import type {
   WorkflowJobPoller,
   WorkflowJobQueue,
@@ -85,6 +86,7 @@ export interface HealthService {
 }
 
 export interface CoreApiDependencies {
+  registry?: ServiceRegistry;
   controls?: ProcurementControls;
   config: AppConfig;
   repository: CoreApiRepository;

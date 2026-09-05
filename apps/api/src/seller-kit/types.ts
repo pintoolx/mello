@@ -13,6 +13,7 @@ export interface SellerServerConfig {
   port: number;
   bindHost?: string;
   publicUrl: string;
+  bazaarEnabled?: boolean;
   paymentMode: PaymentMode;
   facilitatorUrl: string;
   network: Network;
@@ -32,7 +33,7 @@ export interface SellerServerConfig {
 
 export interface CreditReportRequest {
   targetCompanyName: string;
-  purchaseContextToken: string;
+  purchaseContextToken?: string | undefined;
 }
 
 export interface CreditReport {

@@ -435,6 +435,7 @@ export class PrismaCoreApiRepository implements CoreApiRepository {
       candidates: purchase.task.candidates,
       decisionSummary: purchase.task.decisionSummary,
       selectedService: normalizedService(purchase.service),
+      discoveryEvidence: purchase.discoveryEvidence,
       policyDecision: policyDecision ?? null,
       policySnapshot: purchase.policySnapshot,
       mandateHash: purchase.mandateHash,

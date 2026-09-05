@@ -16,6 +16,7 @@ import type {
   PurchaseRetryState,
 } from "../http/contracts.js";
 import { toJsonSafe } from "../http/json-safe.js";
+import { UpdateServiceBindingSchema, VerifyServiceSchema } from "../modules/service-registry/verification.js";
 
 const IdentifierParamsSchema = z.object({ id: z.uuid() });
 const TaskIdentifierParamsSchema = z.object({ taskId: z.uuid() });
@@ -206,6 +207,31 @@ export function createApiRouter(dependencies: CoreApiDependencies): Router {
   const router = Router();
   const requireDemoAdmin = demoAdmin(dependencies);
 
+  router.get("/registry", async (_request, response) => {
+    if (!dependencies.registry) return notFound("Registry");
+    sendJson(response, 200, { discoveryMode: dependencies.config.SERVICE_DISCOVERY_MODE, catalog: "cdp_bazaar", services: await dependencies.registry.list() });
+  });
+  router.get("/registry/discovery", async (_request, response) => {
+    if (!dependencies.registry) return notFound("Registry");
+    sendJson(response, 200, await dependencies.registry.discover());
+  });
+  router.post("/registry/services/:serviceId/verify", requireDemoAdmin, async (request, response) => {
+    if (!dependencies.registry) return notFound("Registry");
+    const { serviceId } = z.object({ serviceId: z.string().regex(/^[a-zA-Z0-9_-]{1,64}$/) }).parse(request.params);
+    sendJson(response, 200, await dependencies.registry.verify(serviceId, VerifyServiceSchema.parse(request.body), requestId(response)));
+  });
+  router.put("/registry/services/:serviceId/binding", requireDemoAdmin, async (request, response) => {
+    if (!dependencies.registry) return notFound("Registry");
+    const { serviceId } = z.object({ serviceId: z.string().regex(/^[a-zA-Z0-9_-]{1,64}$/) }).parse(request.params);
+    sendJson(response, 200, await dependencies.registry.updateBinding(serviceId, UpdateServiceBindingSchema.parse(request.body), requestId(response)));
+  });
+  router.post("/registry/services/:serviceId/revoke", requireDemoAdmin, async (request, response) => {
+    if (!dependencies.registry) return notFound("Registry");
+    const { serviceId } = z.object({ serviceId: z.string().regex(/^[a-zA-Z0-9_-]{1,64}$/) }).parse(request.params);
+    const { reason } = z.object({ reason: z.string().trim().min(3).max(200) }).strict().parse(request.body);
+    sendJson(response, 200, await dependencies.registry.revoke(serviceId, reason, requestId(response)));
+  });
+
   router.get("/controls", async (_request, response) => {
     if (!dependencies.controls) return notFound("Procurement controls");
     sendJson(response, 200, await dependencies.controls.state());
@@ -252,6 +278,7 @@ export function createApiRouter(dependencies: CoreApiDependencies): Router {
       ...toObject(summary),
       modes: {
         agent: dependencies.config.AGENT_MODE,
+        discovery: dependencies.config.SERVICE_DISCOVERY_MODE,
         payment: dependencies.config.PAYMENT_MODE,
         invoice: dependencies.config.INVOICE_PROVIDER,
         anchor: dependencies.config.CONTRACT_ANCHOR_MODE,
@@ -266,9 +293,9 @@ export function createApiRouter(dependencies: CoreApiDependencies): Router {
       dependencies.repository.getCompany(),
       dependencies.repository.getActivePolicy(),
       dependencies.repository.listSellers(),
-      dependencies.repository.listServices(),
+      dependencies.registry ? dependencies.registry.list() : dependencies.repository.listServices(),
     ]);
-    sendJson(response, 200, { company, policy, sellers, services });
+    sendJson(response, 200, { company, policy, sellers, services, discoveryMode: dependencies.config.SERVICE_DISCOVERY_MODE });
   });
 
   router.get("/company", async (_request, response) => {

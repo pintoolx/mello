@@ -122,14 +122,16 @@ export class ProcurementControls {
 
   // This short transaction is the cutoff shared with freeze. A granted permit is in-flight;
   // freeze does not revoke it. Never hold a database lock during an external payment request.
-  async claimPaymentRelease(taskId: string, purchaseId: string, requestId?: string) {
-    await this.prisma.$transaction(async (tx) => {
+  async claimPaymentRelease(taskId: string, purchaseId: string, requestId?: string, transaction?: Prisma.TransactionClient) {
+    const claim = async (tx: Prisma.TransactionClient) => {
       await tx.$queryRaw`SELECT pg_advisory_xact_lock_shared(hashtextextended(${GATE_LOCK}, 0)) IS NULL AS acquired`;
       const state = await tx.paymentControl.findUnique({ where: { id: "global" } });
       if (state?.paymentsFrozen) throw new MelloError("PAYMENTS_FROZEN", "付款已凍結，未核發送出許可", { statusCode: 409 });
       await tx.taskControl.updateMany({ where: { taskId }, data: { paymentReleaseGrantedAt: new Date() } });
       await appendAuditEvent(tx, { aggregateType: "PAYMENT", aggregateId: purchaseId, taskId, purchaseId, requestId,
         eventType: "PAYMENT_RELEASE_PERMIT_GRANTED", stage: "PAYING", payload: { boundary: "BEFORE_SIGNED_PAID_REQUEST_RELEASE" } });
-    });
+    };
+    if (transaction) await claim(transaction);
+    else await this.prisma.$transaction(claim);
   }
 }

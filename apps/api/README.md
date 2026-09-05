@@ -2,7 +2,9 @@
 
 採購 workflow、x402 buyer、Prisma/PostgreSQL、發票重試、對帳與稽核 API。這個 npm workspace 的名稱是 `@mello/api`，預設使用 demo parser、mock payment、mock invoice 與 mock anchors。
 
-本次整合保留既有 `apps/web` Next.js 視覺 Demo。它目前尚未呼叫本 API；前端欄位、狀態與 endpoint 的對照見 [前端串接交接](docs/FRONTEND_INTEGRATION.md)。
+`apps/web` 已透過伺服器端 BFF 串接本 API，保留原有 Next.js 視覺。前端欄位、狀態與 endpoint 的對照見 [前端串接交接](docs/FRONTEND_INTEGRATION.md)。
+
+Bazaar 整合採「CDP Bazaar 服務發現 ∩ Mello 有效認證 ∩ 企業政策」。`SERVICE_DISCOVERY_MODE=bazaar` 不會在查詢失敗時回退本地服務；安全預設 `local_demo` 明確顯示為本地 Demo。人工認證不是自動 KYB，也不代表正式發票能力。完整設定、認證 API 與受控刊登順序見 [Bazaar 交接](../../docs/BAZAAR_IMPLEMENTATION.md)。
 
 ## 目錄
 
@@ -17,7 +19,7 @@ apps/api/
 │   ├── seller-kit/            # x402 server 與持久化 idempotency
 │   ├── tw-einvoice-extension/
 │   └── contracts-client/     # 鏈上／mock anchor adapter
-├── prisma/                   # schema 與全部 12 份既有 migration
+├── prisma/                   # schema 與版本化 migrations
 ├── sellers/seller-a/          # 0.04 USDC，無台灣發票能力
 ├── sellers/seller-b/          # 0.05 USDC，demo 發票能力
 ├── scripts/                  # health、smoke、部署與測試工具
@@ -50,7 +52,7 @@ npm run dev:backend
 
 Mock smoke 要求 `MOCK_INVOICE_FAIL_ONCE=true`，會跑三筆採購、逐筆重試發票、檢查不重複扣款，再驗證低預算拒絕。它只接受 payment 和 anchor 都是 mock 的 stack。
 
-公司 profile、policy、Seller/Service registry 由 seed 建立。若改了 `SELLER_*_URL` 或 `SELLER_*_PAY_TO`，需重新 seed，才能讓資料庫 registry 與 seller response 一致。seed 也會重設 demo 公司與 policy；保留自訂設定時請使用專用 demo database。
+公司 profile、policy、Seller/Service registry 由 seed 建立。本地 Demo 若改了 `SELLER_*_URL` 或 `SELLER_*_PAY_TO`，需同步資料庫 registry 與 seller response；重新 seed 會重設 Demo 公司與 policy，只能用於專用 demo database。保留資料的 Bazaar rollout 請用管理端 binding API 更新既有服務 endpoint／價格，並重新核對認證；收款地址變更另需受控資料遷移與重審。
 
 ## 執行與部署
 
@@ -72,6 +74,7 @@ API 預設綁定 loopback；Railway 私有網路部署使用 `CORE_API_HOST=::`�
 | 發票 | `INVOICE_PROVIDER=mock` | ECPay Stage adapter 尚未實作 |
 | 稽核錨定 | `CONTRACT_ANCHOR_MODE=mock` | `onchain`，需要已部署合約與 operator |
 | Facilitator | 公開 x402.org | CDP URL 加 API key ID／secret |
+| 服務發現 | `SERVICE_DISCOVERY_MODE=local_demo` | `bazaar`，CDP 公開目錄 + Mello 人工範圍認證 + 企業政策 |
 
 使用 CDP 時設定：
 
@@ -103,7 +106,7 @@ npm run demo:health
 MELLO_TESTNET_PAYMENT_APPROVED=true npm run demo:smoke:testnet --workspace @mello/api
 ```
 
-遠端 smoke 最多三筆 0.05 Test USDC，另有六筆 operator-paid anchors。不要把批准旗標持久化設為 true。後端 smoke 不替代瀏覽器验收；接線版 Playwright 入口是 apps/web/scripts/demo-e2e.py。
+遠端 smoke 最多三筆 0.05 Test USDC，另有六筆 operator-paid anchors。不要把批准旗標持久化設為 true。後端 smoke 不替代瀏覽器驗收；現行操作台 Playwright 入口是 apps/web/scripts/workspace-e2e.py；只讀部署檢查使用 workspace-readonly.py。
 
 ## 驗證
 
