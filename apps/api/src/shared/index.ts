@@ -6,3 +6,4 @@ export * from "./hashing.js";
 export * from "./money.js";
 export * from "./redaction.js";
 export * from "./schemas.js";
+export * from "./service-catalog.js";

@@ -54,11 +54,13 @@ import {
   encodeMockSettlement,
   extractRequiredPaymentIdentifier,
   paymentTermsFromPayload,
+  sellerResourceMetadata,
 } from "./protocol.js";
 import {
   createDeterministicCreditReport,
   CreditReportRequestSchema,
   PublicCreditReportRequestSchema,
+  sellerSupportsReportRequest,
 } from "./report.js";
 import {
   createSellerServiceLogger,
@@ -243,13 +245,13 @@ function createPurchaseContextGate(
       return;
     }
     const parsed = (config.bazaarEnabled ? PublicCreditReportRequestSchema : CreditReportRequestSchema).safeParse(req.body);
-    if (!parsed.success) {
+    if (!parsed.success || !sellerSupportsReportRequest(config.sellerId, parsed.data)) {
       res.status(400).json({
         error: {
           code: "VALIDATION_ERROR",
           message: "Invalid credit report request",
           retryable: false,
-          details: parsed.error.issues,
+          ...(parsed.success ? {} : { details: parsed.error.issues }),
         },
       });
       return;
@@ -631,10 +633,8 @@ function installX402Gate(
         maxTimeoutSeconds: routeRequirements.maxTimeoutSeconds,
       },
       resource: `${config.publicUrl.replace(/\/$/, "")}${CREDIT_REPORT_ROUTE}`,
-      description: `${config.sellerName} demo credit report`,
+      ...sellerResourceMetadata(config),
       mimeType: "application/json",
-      serviceName: config.sellerName,
-      tags: ["credit-report", "demo"],
       extensions: routeExtensions,
     },
   };
@@ -782,13 +782,13 @@ export function createSellerApplication(
       : []),
     async (req, res) => {
       const parsed = (config.bazaarEnabled ? PublicCreditReportRequestSchema : CreditReportRequestSchema).safeParse(req.body);
-      if (!parsed.success) {
+      if (!parsed.success || !sellerSupportsReportRequest(config.sellerId, parsed.data)) {
         res.status(400).json({
           error: {
             code: "VALIDATION_ERROR",
             message: "Invalid credit report request",
             retryable: false,
-            details: parsed.error.issues,
+            ...(parsed.success ? {} : { details: parsed.error.issues }),
           },
         });
         return;

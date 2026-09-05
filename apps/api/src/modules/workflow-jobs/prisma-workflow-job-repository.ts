@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { MelloError, sanitizedErrorMessage } from "@mello/shared";
+import { MelloError, sanitizedErrorMessage, TaskRequirementsSchema } from "@mello/shared";
 import { Prisma, type PrismaClient } from "@mello/db";
 import type {
   ClaimedWorkflowJob,
@@ -9,7 +9,7 @@ import type {
   WorkflowJobPayload,
   WorkflowJobStore,
 } from "./contracts.js";
-import { acquireWorkflowQueueSharedLock } from "./queue-lock.js";
+import { acquireTaskDispatchLock, acquireWorkflowQueueSharedLock } from "./queue-lock.js";
 
 interface WorkflowJobRow {
   id: string;
@@ -33,6 +33,7 @@ const MAX_BACKOFF_MS = 5 * 60_000;
 function isWorkflowJobKind(value: string): value is WorkflowJobKind {
   return (
     value === "RUN_TASK" ||
+    value === "DISCOVER_TASK" ||
     value === "RETRY_INVOICE" ||
     value === "RETRY_ANCHOR" ||
     value === "RECONCILE_PAYMENT"
@@ -86,7 +87,7 @@ function auditIdentity(job: {
   purchaseId: string | null;
 } {
   return {
-    aggregateType: job.kind === "RUN_TASK" ? "TASK" : "PURCHASE",
+    aggregateType: job.kind === "RUN_TASK" || job.kind === "DISCOVER_TASK" ? "TASK" : "PURCHASE",
     aggregateId: job.aggregateId,
     taskId: job.payload.taskId ?? null,
     purchaseId: job.payload.purchaseId ?? null,
@@ -97,10 +98,11 @@ async function validateAggregateForEnqueue(
   transaction: Prisma.TransactionClient,
   input: EnqueueWorkflowJobInput,
 ): Promise<void> {
-  if (input.kind === "RUN_TASK") {
+  if (input.kind === "RUN_TASK" || input.kind === "DISCOVER_TASK") {
+    await acquireTaskDispatchLock(transaction, input.aggregateId);
     const task = await transaction.task.findUnique({
       where: { id: input.aggregateId },
-      select: { status: true },
+      select: { status: true, control: true, purchase: { select: { id: true } } },
     });
     if (!task) {
       throw new MelloError("NOT_FOUND", "Task not found", { statusCode: 404 });
@@ -110,6 +112,14 @@ async function validateAggregateForEnqueue(
         statusCode: 409,
       });
     }
+    if (input.kind === "DISCOVER_TASK" && (task.purchase || task.control?.selectedService ||
+      task.control?.approvedAt || !TaskRequirementsSchema.safeParse(task.control?.requirements).success)) {
+      throw new MelloError("TASK_ALREADY_RUNNING", "探索工作僅可用於尚未選用服務的申請", { statusCode: 409 });
+    }
+    const active = await transaction.workflowJob.findFirst({ where: {
+      aggregateId: input.aggregateId, kind: { in: ["RUN_TASK", "DISCOVER_TASK"] }, status: { in: [...ACTIVE_JOB_STATUSES] },
+    }, select: { id: true } });
+    if (active) throw new MelloError("TASK_ALREADY_RUNNING", "Task already has an active discovery or purchase job", { statusCode: 409 });
     return;
   }
 
@@ -180,9 +190,7 @@ export class PrismaWorkflowJobRepository implements WorkflowJobStore {
           ${now},
           ${now}
         )
-        ON CONFLICT ("kind", "aggregateId")
-          WHERE "status" IN ('PENDING', 'RUNNING', 'FAILED_RETRYABLE')
-        DO NOTHING
+        ON CONFLICT DO NOTHING
         RETURNING "id"
       `);
       if (!inserted[0]) {

@@ -688,7 +688,7 @@ video:focus-visible {
 }
 .procurement-steps {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   list-style: none;
   margin: 0 0 24px;
   padding: 0;
@@ -775,7 +775,7 @@ video:focus-visible {
   flex-wrap: wrap;
 }
 @media (max-width: 600px) {
-  .procurement-steps { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .procurement-steps { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .survey-intro { padding: 16px; }
   .survey-options { padding: 0 16px 16px; }
   .survey-option { padding: 14px; }
@@ -810,6 +810,36 @@ video:focus-visible {
   resize: vertical;
   min-height: 115px;
 }
+.request-attachments {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+.request-attachments small, .form-field #requirements-hint {
+  color: var(--muted);
+  font-size: 12px;
+}
+.attachment-list {
+  list-style: none;
+  margin: 16px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.attachment-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--line);
+}
+.attachment-list li > span { min-width: 0; overflow-wrap: anywhere; }
+.attachment-list strong { font-size: 13px; font-weight: 500; }
+.attachment-list small { display: block; color: var(--muted); font-size: 12px; margin-top: 4px; }
+.attachment-list button { flex-shrink: 0; min-height: 40px; }
+.case-attachments { margin: 24px 0; }
+.workspace input[type="file"][hidden] { display: none; }
 .amount-input {
   display: flex;
   max-width: 270px;

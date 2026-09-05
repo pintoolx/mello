@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import type { PrismaClient } from "@mello/db";
 import { appendAuditEvent } from "../audit/index.js";
+import { marketCatalogIsRegistered } from "./market-service-catalog.js";
 
 const OPTIONS = [
   { id: "credit-report-c", sourceId: "credit-report-b", sellerId: "seller-b", displayName: "Mello 信用報告 C（Demo）", supportsTwInvoice: true },
@@ -11,6 +12,9 @@ const OPTIONS = [
 export async function registerDemoServiceOptions(prisma: PrismaClient) {
   return prisma.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${"mello:demo-service-options"}, 0)) IS NULL AS acquired`;
+    // The old helper remains available for legacy fixtures, but must never
+    // recreate or reactivate credit reports after the market catalog transition.
+    if (await marketCatalogIsRegistered(tx)) return { created: [] };
     const created: string[] = [];
     for (const option of OPTIONS) {
       const existing = await tx.service.findUnique({ where: { id: option.id } });

@@ -3,6 +3,7 @@ import { MelloError } from "@mello/shared";
 import cors from "cors";
 import express, { type Express, type RequestHandler } from "express";
 import type { CoreApiDependencies } from "./http/contracts.js";
+import { createAttachmentRouter } from "./modules/attachments/attachment-router.js";
 import {
   createApiRouter,
   createErrorHandler,
@@ -47,6 +48,9 @@ export function createApp(dependencies: CoreApiDependencies): Express {
     }),
   );
   app.use(requestContext(dependencies));
+  // Only the authenticated upload route accepts a larger JSON body. All other
+  // routes retain the existing 64 KB parser and access behavior below.
+  app.use("/api/v1", createAttachmentRouter(dependencies));
   app.use(express.json({ limit: "64kb" }));
   app.get("/healthz", (_request, response) => response.json({ status: "ok" }));
   app.use("/api/v1", (request, _response, next) => {

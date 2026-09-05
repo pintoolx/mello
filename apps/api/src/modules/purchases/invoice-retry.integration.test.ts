@@ -131,7 +131,7 @@ describe.sequential("invoice fail-once PostgreSQL recovery", () => {
           report: {
             reportId: `report-${input.purchaseId}`,
             provider: input.sellerId,
-            targetCompanyName: input.targetCompanyName,
+            targetCompanyName: input.targetCompanyName!,
             riskScore: 12,
             riskLevel: "LOW",
             summary: "Deterministic integration report",

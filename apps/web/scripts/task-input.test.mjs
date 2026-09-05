@@ -57,3 +57,10 @@ test("a lost create response preserves all four requirement combinations", () =>
     prompt: "信用報告", requestKey: "survey-request-key-1", requirements: { requiresTwInvoice: "false" },
   }) }));
 });
+
+test("pending request persists attachment references only and rejects malformed references", () => {
+  const input = { prompt: "總經分析", requestKey: "8a7c6824-18cd-4f1d-9732-eab64145e11c", attachmentIds: ["b28151d4-0700-42f0-a359-85a080afc4f0"] };
+  assert.deepEqual(readPendingRequest({ getItem: () => JSON.stringify({ ...input, contentBase64: "never persisted", files: ["private"] }) }), input);
+  for (const attachmentIds of [[...input.attachmentIds, ...input.attachmentIds], ["invalid"], [null], "bad", Array(4).fill(input.attachmentIds[0])])
+    assert.throws(() => readPendingRequest({ getItem: () => JSON.stringify({ ...input, attachmentIds }) }));
+});

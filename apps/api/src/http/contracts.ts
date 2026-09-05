@@ -7,6 +7,7 @@ import type {
 import type { AppConfig } from "../config.js";
 import type { ProcurementControls } from "../modules/controls/procurement-controls.js";
 import type { ServiceRegistry } from "../modules/service-registry/registry-service.js";
+import type { TaskAttachmentService } from "../modules/attachments/task-attachments.js";
 import type {
   WorkflowJobPoller,
   WorkflowJobQueue,
@@ -47,7 +48,8 @@ export interface AuditEventFilter extends PaginationInput {
 }
 
 export interface BackgroundFailureInput {
-  operation: "RUN_TASK" | "RETRY_INVOICE" | "RETRY_ANCHOR" | "RECONCILE_PAYMENT";
+  operation: "DISCOVER_TASK" | "RUN_TASK" | "RETRY_INVOICE" | "RETRY_ANCHOR" | "RECONCILE_PAYMENT";
+  jobId?: string | undefined;
   taskId?: string | undefined;
   purchaseId?: string | undefined;
   requestId: string;
@@ -75,6 +77,7 @@ export interface CoreApiRepository {
 }
 
 export interface WorkflowOperations {
+  discover(taskId: string, requestId: string | undefined, jobId: string): Promise<void>;
   run(taskId: string, requestId?: string): Promise<void>;
   retryInvoice(purchaseId: string, requestId?: string): Promise<void>;
   retryAnchor(purchaseId: string, requestId?: string): Promise<void>;
@@ -86,6 +89,7 @@ export interface HealthService {
 }
 
 export interface CoreApiDependencies {
+  attachments?: TaskAttachmentService;
   registry?: ServiceRegistry;
   controls?: ProcurementControls;
   config: AppConfig;

@@ -5,6 +5,7 @@ export function visibleSurveyCandidates(candidates: Service[], requirements?: {
   requiresRegistryCertification: boolean;
 } | null) {
   return candidates.filter((candidate) => candidate.matchesRequirements !== false &&
+    !candidate.reasonCodes?.includes("CATEGORY_MISMATCH") &&
     (!requirements?.requiresTwInvoice || candidate.supportsTwInvoice) &&
     (!requirements?.requiresRegistryCertification || candidate.verificationStatus === "VERIFIED"));
 }
@@ -18,6 +19,7 @@ export function surveyReason(reason: string) {
     NETWORK_NOT_ALLOWED: "付款網路不符公司政策",
     TOKEN_NOT_ALLOWED: "付款幣別不符公司政策",
     SERVICE_INACTIVE: "服務已停用",
+    CATEGORY_MISMATCH: "不是本次搜尋的服務類型",
     BAZAAR_SERVICE_NOT_FOUND_OR_CHANGED: "公開目錄未提供相符報價",
   };
   return labels[reason] ?? (reason.startsWith("VERIFICATION_") ? "Mello Registry 認證尚未通過或已失效" : reason);

@@ -1,5 +1,6 @@
 import {
   BASE_SEPOLIA_USDC,
+  MARKET_SERVICE_CATALOG,
   MELLO_NETWORK,
   MelloError,
   type CompanyProfileInput,
@@ -68,7 +69,7 @@ function fakeRepository(): CoreApiRepository {
       version: 2,
     })),
     listSellers: vi.fn(async () => [{ id: "seller-a" }, { id: "seller-b" }]),
-    listServices: vi.fn(async () => [{ id: "credit-report-a" }, { id: "credit-report-b" }]),
+    listServices: vi.fn(async () => [{ id: "credit-report-a", active: true }, { id: "credit-report-b", active: true }]),
     createTask: vi.fn(
       async (): Promise<{ id: string; status: "CREATED" }> => ({
         id: TASK_ID,
@@ -128,6 +129,7 @@ function fakeRepository(): CoreApiRepository {
 
 function fakeWorkflow(): WorkflowOperations {
   return {
+    discover: vi.fn(async () => undefined),
     run: vi.fn(async () => undefined),
     retryInvoice: vi.fn(async () => undefined),
     retryAnchor: vi.fn(async () => undefined),
@@ -221,6 +223,17 @@ describe("Core API HTTP app", () => {
       counts: { tasks: 1 },
       modes: { agent: "demo", payment: "mock", invoice: "mock", anchor: "mock" },
     });
+  });
+
+  it("exposes only the four active catalog entries in settings, not archived credit services", async () => {
+    const runtime = dependencies();
+    const active = MARKET_SERVICE_CATALOG.map((product) => ({ id: product.id, active: true }));
+    vi.mocked(runtime.repository.listServices).mockResolvedValue([
+      ...active, ...["a", "b", "c", "d"].map((suffix) => ({ id: `credit-report-${suffix}`, active: false })),
+      { id: "missing-active" },
+    ]);
+    const response = await supertest(createApp(runtime)).get("/api/v1/settings").expect(200);
+    expect(response.body.services).toEqual(active);
   });
 
   it("keeps settings readable to the BFF while requiring the admin token for mutations", async () => {
@@ -387,6 +400,39 @@ describe("Core API HTTP app", () => {
     expect(detail.body.taskId).toBe(TASK_ID);
   });
 
+  it("queues only discovery while creating a modern request and returns its durable dispatch status", async () => {
+    const transaction = {} as never;
+    const input = { prompt: "搜尋服務：加密市場資訊", requestKey: "create-auto-discovery-request",
+      requirements: { requiresTwInvoice: false, requiresRegistryCertification: false } };
+    const createTask = vi.fn(async (_input: unknown, enqueue: (tx: never, taskId: string) => Promise<{ id: string }>) => {
+      await enqueue(transaction, TASK_ID);
+      return { id: TASK_ID, status: "CREATED", requestKey: input.requestKey, deduplicated: false, discoveryQueued: true };
+    });
+    const runtime = dependencies({ controls: { createTask } as never });
+    const response = await supertest(createApp(runtime)).post("/api/v1/tasks").send(input).expect(201);
+    expect(response.body).toMatchObject({ taskId: TASK_ID, status: "CREATED", discoveryQueued: true, deduplicated: false });
+    expect(runtime.workflowJobs.enqueue).toHaveBeenCalledWith(expect.objectContaining({ kind: "DISCOVER_TASK", aggregateId: TASK_ID }), transaction);
+    expect(runtime.workflow.run).not.toHaveBeenCalled();
+    expect(runtime.repository.createTask).not.toHaveBeenCalled();
+  });
+
+  it("does not create a modern request without a durable discovery control boundary", async () => {
+    const runtime = dependencies();
+    await supertest(createApp(runtime)).post("/api/v1/tasks").send({ prompt: "搜尋服務：總經分析",
+      requirements: { requiresTwInvoice: false, requiresRegistryCertification: false } }).expect(500);
+    expect(runtime.repository.createTask).not.toHaveBeenCalled();
+    expect(runtime.workflowJobs.enqueue).not.toHaveBeenCalled();
+  });
+
+  it("blocks the legacy run endpoint for an unselected modern request", async () => {
+    const runtime = dependencies({ controls: { detail: vi.fn(async () => ({
+      requirements: { requiresTwInvoice: false, requiresRegistryCertification: false }, selectedService: null,
+    })) } as never });
+    await supertest(createApp(runtime)).post(`/api/v1/tasks/${TASK_ID}/run`).expect(409);
+    expect(runtime.workflowJobs.enqueue).not.toHaveBeenCalled();
+    expect(runtime.workflow.run).not.toHaveBeenCalled();
+  });
+
   it("lists the seeded seller and service registry", async () => {
     const runtime = dependencies();
     const app = createApp(runtime);
@@ -398,6 +444,18 @@ describe("Core API HTTP app", () => {
     expect(sellers.body.sellers).toHaveLength(2);
     expect(services.body.services).toHaveLength(2);
     expect(runtime.repository.listServices).toHaveBeenCalledWith("credit_report");
+  });
+
+  it.each(["stock_analysis", "macro_analysis", "crypto_market", "futures_analysis"])("accepts exact %s service filters", async (category) => {
+    const runtime = dependencies();
+    await supertest(createApp(runtime)).get(`/api/v1/services?category=${category}`).expect(200);
+    expect(runtime.repository.listServices).toHaveBeenCalledExactlyOnceWith(category);
+  });
+
+  it("rejects unknown service categories before calling the repository", async () => {
+    const runtime = dependencies();
+    await supertest(createApp(runtime)).get("/api/v1/services?category=unsupported").expect(400);
+    expect(runtime.repository.listServices).not.toHaveBeenCalled();
   });
 
   it("starts a created task in the background and returns 202", async () => {

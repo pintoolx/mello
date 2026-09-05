@@ -28,7 +28,7 @@ API pre-deploy: `npm run db:prepare --workspace @mello/api`。由 npm script 順
 - API / Sellers：CDP facilitator URL、CDP_API_KEY_ID、CDP_API_KEY_SECRET、共用 SELLER_CONTEXT_HMAC_SECRET。Sellers 不需 buyer/operator 私鑰。
 - API：API_ACCESS_TOKEN、DEMO_ADMIN_TOKEN（高熵隨機秘密）；所有 /api/v1 routes 受 API key 保護。
 - Web：CORE_API_URL=`http://${{api.RAILWAY_PRIVATE_DOMAIN}}:8080`、同一 API_ACCESS_TOKEN / DEMO_ADMIN_TOKEN、獨立 MELLO_SESSION_SECRET 與 MELLO_ACCESS_CODE，WEB_PUBLIC_URL 為其公開 HTTPS origin。
-- `MOCK_INVOICE_FAIL_ONCE=true` 刻意提供 demo 開票重試流程。ISSUED_DEMO 不是正式統一發票。
+- 正常展示設 `MOCK_INVOICE_FAIL_ONCE=false`，第一次即取得測試發票。舊環境若顯式設為 true，部署時必須另改；true 僅用於明確的故障恢復測試。ISSUED_DEMO 不是正式統一發票。
 
 秘密用 Railway CLI stdin／sealed variables，不出现在 CLI arguments、Git、browser bundle 或 NEXT_PUBLIC_*。對外使用 Web 與獨立 Docs domain，API 與 Sellers 使用 private networking。Docs 只需 PORT=8080 與 NODE_ENV=production，不傳入任何操作台秘密。不要把測試批准旗標永久設到 Railway。
 

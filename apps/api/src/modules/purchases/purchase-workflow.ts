@@ -19,10 +19,14 @@ import {
   TaskRequirementsSchema,
   ServiceSelectionSchema,
   ServiceRecordSchema,
+  SERVICE_CATEGORIES,
+  getMarketService,
+  isMarketServiceCategory,
   hashCanonicalJson,
   sanitizedErrorMessage,
   type CompanyProfileInput,
   type PolicyInput,
+  type ServiceCategory,
 } from "@mello/shared";
 import { generatePaymentId } from "@x402/extensions/payment-identifier";
 import type { AppConfig } from "../../config.js";
@@ -34,6 +38,7 @@ import {
   paymentExplorerBaseForVerifiedSettlement,
 } from "../../runtime-evidence.js";
 import { appendAuditEvent, jsonValue } from "../audit/index.js";
+import { acquireTaskDispatchLock, acquireWorkflowQueueSharedLock } from "../workflow-jobs/queue-lock.js";
 import type { InvoiceAdapter } from "../invoices/index.js";
 import {
   RetryableInvoiceError,
@@ -51,6 +56,7 @@ import { reconcilePurchase } from "../reconciliation/index.js";
 import {
   PendingSettlementVerificationError,
   PaymentSettlementReportSchema,
+  reportMatchesRequest,
   SettledPaymentDeliveryError,
   maximumAuthorizationValidBefore,
   type PaymentProvider,
@@ -168,6 +174,37 @@ export class PurchaseWorkflow {
         "Purchase workflow failed",
       );
       await this.failTask(taskId, error, requestId);
+      throw error;
+    }
+  }
+
+  async discover(taskId: string, requestId: string | undefined, jobId: string): Promise<void> {
+    const { prisma, logger } = this.dependencies;
+    const started = await prisma.$transaction(async (tx) => {
+      await acquireWorkflowQueueSharedLock(tx);
+      await acquireTaskDispatchLock(tx, taskId);
+      const task = await tx.task.findUnique({ where: { id: taskId }, include: { control: true, purchase: true } });
+      if (!task) throw new MelloError("NOT_FOUND", "Task not found", { statusCode: 404 });
+      // A recovered or delayed discovery job cannot reset a completed survey or
+      // acquire payment authority from a selection made after it was dispatched.
+      if (task.control?.discoveryJobId !== jobId || task.purchase || task.control.selectedService || task.control.approvedAt ||
+        ["WAITING_SELECTION", "COMPLETED", "REJECTED", "FAILED", "ACTION_REQUIRED"].includes(task.status)) return false;
+      if (!TaskRequirementsSchema.safeParse(task.control.requirements).success) {
+        throw new MelloError("VALIDATION_ERROR", "探索申請缺少人工選用服務的邊界", { statusCode: 409 });
+      }
+      if (task.status !== "CREATED") throw new MelloError("TASK_ALREADY_RUNNING", "探索工作尚未完成，請稍後重試", { statusCode: 409 });
+      await tx.task.update({ where: { id: taskId }, data: { status: "PARSING", runStartedAt: this.now(), errorCode: null, errorMessage: null } });
+      await appendAuditEvent(tx, { aggregateType: "TASK", aggregateId: taskId, taskId, requestId,
+        stage: "PARSING", eventType: "TASK_RUN_STARTED", payload: { previousStatus: "CREATED", purpose: "DISCOVER_ONLY", jobId } });
+      return true;
+    });
+    if (!started) return;
+    try {
+      await this.execute(taskId, requestId, jobId);
+    } catch (error: unknown) {
+      // Only the worker's generation-bound finalizer may mark discovery failed.
+      // An old worker finishing late must never overwrite a newer selection/job.
+      logger.error({ err: error, taskId, requestId, jobId, stage: "DISCOVERY" }, "Service discovery failed");
       throw error;
     }
   }
@@ -411,11 +448,14 @@ export class PurchaseWorkflow {
     const parsedQuarantinedReport = PaymentSettlementReportSchema.safeParse(
       purchase.delivery?.status === "PENDING" ? purchase.delivery.responseBody : null,
     );
-    const intent = purchase.task.intent as { targetCompanyName?: string } | null;
+    const intent = purchase.task.intent as { targetCompanyName?: string; serviceCategory?: ServiceCategory; serviceQuery?: string } | null;
     const quarantinedReport =
       parsedQuarantinedReport.success &&
-      parsedQuarantinedReport.data.provider === purchase.service.sellerId &&
-      parsedQuarantinedReport.data.targetCompanyName === intent?.targetCompanyName
+      reportMatchesRequest(parsedQuarantinedReport.data, {
+        sellerId: purchase.service.sellerId, serviceId: purchase.serviceId,
+        serviceCategory: intent?.serviceCategory, serviceQuery: intent?.serviceQuery,
+        targetCompanyName: intent?.targetCompanyName,
+      })
         ? parsedQuarantinedReport.data
         : null;
     const evidence: PendingSettlementEvidence = {
@@ -755,7 +795,8 @@ export class PurchaseWorkflow {
     }
   }
 
-  private async execute(taskId: string, requestId?: string): Promise<void> {
+  private async execute(taskId: string, requestId?: string, discoveryJobId?: string): Promise<void> {
+    const discoveryOnly = discoveryJobId !== undefined;
     const { prisma, agent, paymentProvider, config } = this.dependencies;
     const [task, companyRecord, policyRecord, serviceRecords] = await Promise.all([
       prisma.task.findUniqueOrThrow({ where: { id: taskId }, include: { control: true } }),
@@ -763,7 +804,7 @@ export class PurchaseWorkflow {
       prisma.policy.findFirstOrThrow({ where: { active: true } }),
       prisma.service.findMany({
         where: {
-          category: "credit_report",
+          category: { in: [...SERVICE_CATEGORIES] },
           seller: { status: "ACTIVE" },
         },
         include: { seller: true },
@@ -791,6 +832,7 @@ export class PurchaseWorkflow {
       ServiceRecordSchema.parse({
         ...service,
         sellerLegalName: service.seller.legalName,
+        ...(service.seller.displayName ? { sellerDisplayName: service.seller.displayName } : {}),
         sellerBusinessId: service.seller.businessId,
         payToAddress: service.seller.payToAddress,
         invoiceCapability: service.seller.invoiceCapability,
@@ -800,6 +842,9 @@ export class PurchaseWorkflow {
 
     const requirements = task.control?.requirements ? TaskRequirementsSchema.parse(task.control.requirements) : null;
     const selection = task.control?.selectedService ? ServiceSelectionSchema.parse(task.control.selectedService) : null;
+    if (discoveryOnly && (!requirements || selection || task.control?.approvedAt || task.control?.discoveryJobId !== discoveryJobId)) {
+      throw new MelloError("TASK_ALREADY_RUNNING", "探索工作不能執行已選用或核准的採購", { statusCode: 409 });
+    }
     const parsed = selection && task.intent ? {
       intent: PurchaseIntentSchema.parse(task.intent), usedFallback: task.usedFallbackParser,
     } : await agent.parse({
@@ -812,11 +857,11 @@ export class PurchaseWorkflow {
     await this.setTaskStage(taskId, "DISCOVERING", "INTENT_PARSED", parsed.intent, requestId, {
       intent: jsonValue(parsed.intent),
       usedFallbackParser: parsed.usedFallback,
-    });
+    }, discoveryJobId);
 
     const discovery = config.SERVICE_DISCOVERY_MODE === "bazaar"
-      ? await this.registry.discover(requirements?.requiresRegistryCertification ?? true)
-      : requirements ? await this.registry.discoverLocal(requirements.requiresRegistryCertification) : null;
+      ? await this.registry.discover(requirements?.requiresRegistryCertification ?? true, parsed.intent.serviceCategory)
+      : requirements ? await this.registry.discoverLocal(requirements.requiresRegistryCertification, parsed.intent.serviceCategory) : null;
     if (discovery) services = discovery.services;
     await appendAuditEvent(prisma, {
       aggregateType: "TASK", aggregateId: taskId, taskId, requestId, stage: "DISCOVERING",
@@ -840,7 +885,7 @@ export class PurchaseWorkflow {
       const reasons = [...(candidate.eligible ? [] : candidate.reasonCodes), ...assessment.reasonCodes];
       return { ...candidate, discoverySource: "cdp_bazaar", verificationStatus: assessment.verification.status,
         eligible: reasons.length === 0, reasonCodes: reasons.length ? reasons : ["CANDIDATE_ELIGIBLE", "BAZAAR_VERIFICATION_MATCHED"],
-        humanSummary: reasons.length ? `未通過：${reasons.join("、")}` : `${candidate.sellerLegalName} 的 Bazaar 服務、Mello 認證與企業政策均通過。`,
+        humanSummary: reasons.length ? `未通過：${reasons.join("、")}` : `${candidate.sellerDisplayName ?? candidate.sellerLegalName} 的 Bazaar 服務、Mello 認證與企業政策均通過。`,
       };
     });
     await this.setTaskStage(
@@ -850,14 +895,21 @@ export class PurchaseWorkflow {
       { candidates },
       requestId,
       { candidates: jsonValue(candidates) },
+      discoveryJobId,
     );
-    const selectedCandidate = requirements
+    const selectedCandidate = discoveryOnly ? undefined : requirements
       ? candidates.find((candidate) => candidate.serviceId === selection?.serviceId && candidate.eligible &&
         "selectionHash" in candidate && candidate.selectionHash === selection.selectionHash)
       : selectCandidate(candidates);
     if (requirements && !selectedCandidate) {
       await prisma.$transaction(async (transaction) => {
-        const changed = await transaction.task.updateMany({ where: { id: taskId, status: "EVALUATING" }, data: {
+        if (discoveryJobId) {
+          await acquireWorkflowQueueSharedLock(transaction);
+          await acquireTaskDispatchLock(transaction, taskId);
+        }
+        const changed = await transaction.task.updateMany({ where: { id: taskId, status: "EVALUATING",
+          ...(discoveryJobId ? { control: { is: { discoveryJobId } } } : {}),
+        }, data: {
           status: "WAITING_SELECTION", errorCode: null, errorMessage: null,
           decisionSummary: selection
             ? "選用服務的報價或資格已更新，請重新確認服務後送出採購。"
@@ -1019,7 +1071,7 @@ export class PurchaseWorkflow {
         where: { id: taskId, status: "EVALUATING" },
         data: {
           status: "EVALUATING",
-          decisionSummary: `Registry candidate ${selectedService.sellerLegalName} selected；正在驗證 live 402 payment terms。`,
+          decisionSummary: `Registry candidate ${selectedService.sellerDisplayName ?? selectedService.sellerLegalName} selected；正在驗證 live 402 payment terms。`,
         },
       });
       if (purchaseCreated.count !== 1) {
@@ -1116,6 +1168,9 @@ export class PurchaseWorkflow {
         sellerId: selectedService.sellerId,
         endpoint: selectedService.endpoint,
         targetCompanyName: parsed.intent.targetCompanyName,
+        serviceId: selectedService.id,
+        serviceCategory: parsed.intent.serviceCategory,
+        serviceQuery: parsed.intent.serviceQuery,
         purchaseContextToken,
         requiresTwInvoice: invoiceRequired,
         network: selectedService.network,
@@ -1158,7 +1213,7 @@ export class PurchaseWorkflow {
         nextTaskStatus: "AUTH_ANCHOR_PENDING",
         nextPurchaseStatus: "AUTH_ANCHOR_PENDING",
         taskData: {
-          decisionSummary: `選擇 ${selectedService.sellerLegalName}：live 402 terms 已通過政策，價格為 ${selectedService.priceAtomic} atomic USDC。`,
+          decisionSummary: `選擇 ${selectedService.sellerDisplayName ?? selectedService.sellerLegalName}：live 402 terms 已通過政策，價格為 ${selectedService.priceAtomic} atomic USDC。`,
         },
         aggregateType: "PURCHASE",
         aggregateId: purchaseId,
@@ -1709,6 +1764,8 @@ export class PurchaseWorkflow {
 
     const intent = purchase.task.intent as {
       targetCompanyName?: string;
+      serviceCategory?: ServiceCategory;
+      serviceQuery?: string;
       requiresTwInvoice?: boolean;
       buyerBusinessId?: string;
       maxAmount?: { atomic?: string };
@@ -1765,7 +1822,7 @@ export class PurchaseWorkflow {
       payToAddress: purchase.payToAddress,
       invoiceCapability: sellerId === "seller-b" ? "TW_B2B_DEMO" : "NONE",
       invoiceProvider: sellerId === "seller-b" ? "MOCK" : "NONE",
-      category: "credit_report",
+      category: intent?.serviceCategory ?? "credit_report",
       endpoint: purchase.service.endpoint,
       method: "POST",
       priceAtomic: purchase.expectedAmountAtomic,
@@ -1776,9 +1833,12 @@ export class PurchaseWorkflow {
       supportsTwInvoice: sellerId === "seller-b",
       active: true,
     });
-    const retryIntent = {
-      serviceCategory: "credit_report" as const,
-      targetCompanyName: intent?.targetCompanyName ?? "Example Co.",
+    const retryCategory = intent?.serviceCategory ?? "credit_report";
+    const retryIntent = PurchaseIntentSchema.parse({
+      serviceCategory: retryCategory,
+      ...(isMarketServiceCategory(retryCategory)
+        ? { serviceQuery: intent?.serviceQuery }
+        : { targetCompanyName: intent?.targetCompanyName ?? "Example Co." }),
       maxAmount: {
         atomic: maxAmountAtomic,
         display: maxAmountAtomic,
@@ -1789,7 +1849,7 @@ export class PurchaseWorkflow {
       costCenter: "PURCHASE_SNAPSHOT",
       networkPreference: purchase.network as "eip155:84532",
       usedDemoDefaultTarget: false,
-    };
+    });
     const evaluateRetryLiveTerms = (
       livePaymentTerms: PreparedPayment["validatedTerms"],
     ) =>
@@ -1881,6 +1941,9 @@ export class PurchaseWorkflow {
         sellerId,
         endpoint: purchase.service.endpoint,
         targetCompanyName: retryIntent.targetCompanyName,
+        serviceId: purchase.serviceId,
+        serviceCategory: retryIntent.serviceCategory,
+        serviceQuery: retryIntent.serviceQuery,
         purchaseContextToken,
         requiresTwInvoice: policy.requireTwInvoice || retryIntent.requiresTwInvoice,
         network: purchase.network,
@@ -2546,7 +2609,7 @@ export class PurchaseWorkflow {
         sellerProfileId: purchase.service.seller.id,
         sourceAmountAtomic: purchase.payment.amountAtomic ?? "",
         fxRateTwdPerUsdc: config.DEMO_TWD_PER_USDC,
-        itemName: `${intent?.targetCompanyName ?? "Example Co."} 信用報告`,
+        itemName: getMarketService(purchase.serviceId)?.displayName ?? `${intent?.targetCompanyName ?? "Example Co."} 信用報告`,
         paymentId: purchase.paymentId,
         paymentTxHash: purchase.payment.transactionHash ?? "",
         issuedAt: this.now(),
@@ -3286,11 +3349,16 @@ export class PurchaseWorkflow {
     payload: unknown,
     requestId?: string,
     extraData: Prisma.TaskUpdateInput = {},
+    discoveryJobId?: string,
   ): Promise<void> {
     await this.dependencies.prisma.$transaction(async (transaction) => {
+      if (discoveryJobId) {
+        await acquireWorkflowQueueSharedLock(transaction);
+        await acquireTaskDispatchLock(transaction, taskId);
+      }
       const expectedStatus = status === "DISCOVERING" ? "PARSING" : "DISCOVERING";
       const taskTransition = await transaction.task.updateMany({
-        where: { id: taskId, status: expectedStatus },
+        where: { id: taskId, status: expectedStatus, ...(discoveryJobId ? { control: { is: { discoveryJobId } } } : {}) },
         data: { status, ...extraData },
       });
       if (taskTransition.count !== 1) {

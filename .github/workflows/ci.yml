@@ -40,5 +40,5 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       # Fixtures only: never use a wallet, external seller, LLM key or real funds.
-      - run: npm run test:integration --workspace @mello/api -- src/modules/service-registry src/modules/procurement-agent src/modules/controls src/modules/workflow-jobs src/http/settings.integration.test.ts src/modules/purchases/invoice-retry.integration.test.ts
+      - run: npm run test:integration --workspace @mello/api -- src/modules/attachments src/modules/service-registry src/modules/procurement-agent src/modules/controls src/modules/workflow-jobs src/http/settings.integration.test.ts src/modules/purchases/invoice-retry.integration.test.ts src/modules/purchases/market-service-workflow.integration.test.ts
       - run: npm run build

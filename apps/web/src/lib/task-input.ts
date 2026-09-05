@@ -6,6 +6,7 @@ export interface TaskInput {
   approvalLimitAtomic?: string;
   expectedPayTo?: string;
   requirements?: { requiresTwInvoice: boolean; requiresRegistryCertification: boolean };
+  attachmentIds?: string[];
 }
 
 export function atomicAmount(value: string): string {
@@ -31,6 +32,10 @@ export function readPendingRequest(
       typeof input.requestKey !== "string" ||
       input.requestKey.length < 16 ||
       input.requestKey.length > 128 ||
+      (input.attachmentIds !== undefined &&
+        (!Array.isArray(input.attachmentIds) || input.attachmentIds.length > 3 ||
+          input.attachmentIds.some((id: unknown) => typeof id !== "string" || !/^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/iu.test(id)) ||
+          new Set(input.attachmentIds).size !== input.attachmentIds.length)) ||
       (input.requirements !== undefined &&
         (typeof input.requirements?.requiresTwInvoice !== "boolean" ||
           typeof input.requirements?.requiresRegistryCertification !== "boolean")) ||
@@ -45,6 +50,7 @@ export function readPendingRequest(
     return {
       prompt: input.prompt,
       requestKey: input.requestKey,
+      ...(input.attachmentIds !== undefined ? { attachmentIds: [...input.attachmentIds] } : {}),
       ...(input.requirements !== undefined ? { requirements: {
         requiresTwInvoice: input.requirements.requiresTwInvoice,
         requiresRegistryCertification: input.requirements.requiresRegistryCertification,

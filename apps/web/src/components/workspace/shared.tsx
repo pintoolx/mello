@@ -110,6 +110,8 @@ export function Badge({ status }: { status?: string | null }) {
     "DELIVERED",
     "MATCHED",
     "CONFIRMED",
+    "ISSUED_DEMO",
+    "ISSUED_STAGE",
   ].includes(status ?? "")
     ? "success"
     : ["FAILED", "REJECTED", "MISMATCH", "FAILED_FINAL"].includes(status ?? "")
@@ -117,8 +119,6 @@ export function Badge({ status }: { status?: string | null }) {
       : [
             "ACTION_REQUIRED",
             "FAILED_RETRYABLE",
-            "ISSUED_DEMO",
-            "ISSUED_STAGE",
           ].includes(status ?? "")
         ? "warning"
         : "neutral";

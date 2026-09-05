@@ -16,6 +16,7 @@ import type {
 import { PrismaCoreApiRepository } from "./http/prisma-core-api-repository.js";
 import { logger as defaultLogger } from "./logger.js";
 import { ProcurementControls } from "./modules/controls/procurement-controls.js";
+import { TaskAttachmentService } from "./modules/attachments/task-attachments.js";
 import { CdpBazaarClient, type BazaarDiscovery } from "./modules/service-registry/bazaar-client.js";
 import { ServiceRegistry } from "./modules/service-registry/registry-service.js";
 import {
@@ -55,7 +56,7 @@ async function workflowRetryIsSafe(
   prisma: PrismaClient,
   job: ClaimedWorkflowJob,
 ): Promise<boolean> {
-  if (job.kind === "RUN_TASK") {
+  if (job.kind === "RUN_TASK" || job.kind === "DISCOVER_TASK") {
     const task = await prisma.task.findUnique({
       where: { id: job.aggregateId },
       select: { status: true },
@@ -187,6 +188,7 @@ export function createCoreApiDependencies(
     );
 
   return {
+    attachments: new TaskAttachmentService(prisma),
     registry,
     controls,
     config,

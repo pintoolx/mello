@@ -17,6 +17,7 @@ import {
 import { describe, expect, it, vi } from "vitest";
 import type { PreparePaymentInput } from "./payment-provider.js";
 import { X402PaymentProvider } from "./x402-payment-provider.js";
+import { createDeterministicMarketReport } from "../../seller-kit/report.js";
 
 const privateKey =
   "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as const;
@@ -81,6 +82,51 @@ const validReport = {
   summary: "Demo credit report only",
   generatedAt: "2026-09-04T12:00:00.000Z",
 };
+
+const modernInput = { ...baseInput, targetCompanyName: undefined,
+  serviceId: "macro-analysis", serviceCategory: "macro_analysis" as const, serviceQuery: "總經分析" };
+const modernReport = createDeterministicMarketReport("seller-b", {
+  serviceId: "macro-analysis", serviceCategory: "macro_analysis", serviceQuery: "總經分析",
+}, "x402", new Date("2026-09-06T00:00:00.000Z"));
+
+describe("market x402 deliveries (fixture transport, no chain payments)", () => {
+  it("sends the selected service and accepts its bound modern report without a company", async () => {
+    const transport = createFetch(requiredResponse(), modernReport);
+    const bodies: unknown[] = [];
+    const provider = new X402PaymentProvider({ privateKey, rpcUrl: "https://sepolia.base.org",
+      fetchImplementation: async (input, init) => {
+        bodies.push(await (input instanceof Request ? input.clone() : new Request(input, init)).json());
+        return transport.fetchImplementation(input, init);
+      },
+      readTokenBalance: async () => 1_000_000n, readChainId: async () => 84_532, settlementReceiptVerifier,
+    });
+    const prepared = await provider.prepare({ ...modernInput, payerAddress: await provider.getAddress() });
+    const settlement = await prepared.submit();
+    expect(settlement.report).toEqual(modernReport);
+    expect(transport.paidCalls()).toBe(1);
+    expect(bodies.length).toBeGreaterThan(0);
+    for (const body of bodies) expect(body).toEqual({ serviceId: "macro-analysis", serviceCategory: "macro_analysis", serviceQuery: "總經分析", purchaseContextToken: baseInput.purchaseContextToken });
+  });
+
+  it.each([
+    { label: "legacy cached report", report: validReport },
+    { label: "wrong service", report: { ...modernReport, serviceId: "crypto-market" } },
+    { label: "wrong category", report: { ...modernReport, serviceCategory: "crypto_market" } },
+    { label: "wrong query", report: { ...modernReport, serviceQuery: "different query" } },
+    { label: "wrong provider", report: { ...modernReport, provider: "seller-a" } },
+    { label: "missing modern fields with legacy fallback", report: { ...validReport, reportVersion: "market-v1" } },
+  ])("preserves payment but fails $label without resubmitting", async ({ report }) => {
+    const transport = createFetch(requiredResponse(), report);
+    const provider = new X402PaymentProvider({ privateKey, rpcUrl: "https://sepolia.base.org",
+      fetchImplementation: transport.fetchImplementation, readTokenBalance: async () => 1_000_000n,
+      readChainId: async () => 84_532, settlementReceiptVerifier,
+    });
+    const prepared = await provider.prepare({ ...modernInput, payerAddress: await provider.getAddress() });
+    await expect(prepared.submit()).rejects.toMatchObject({ code: "SERVICE_DELIVERY_FAILED", settlement: { amountAtomic: "50000" } });
+    await expect(prepared.submit()).rejects.toMatchObject({ code: "X402_PAYMENT_FAILED" });
+    expect(transport.paidCalls()).toBe(1);
+  });
+});
 
 function createFetch(
   paymentRequired = requiredResponse(),

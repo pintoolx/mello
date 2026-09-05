@@ -38,6 +38,10 @@ export interface Policy {
 }
 export interface Service {
   displayName?: string | null;
+  sellerDisplayName?: string | null;
+  description?: string | null;
+  category?: string;
+  active?: boolean;
   matchesRequirements?: boolean;
   selectionHash?: string;
   id?: string;
@@ -80,7 +84,9 @@ export interface TaskRow {
 }
 export interface Intent {
   requiresTwInvoice?: boolean;
-  targetCompanyName: string;
+  serviceCategory?: string;
+  serviceQuery?: string;
+  targetCompanyName?: string;
   maxAmount: { atomic: string };
   buyerBusinessId: string;
   costCenter: string;
@@ -131,6 +137,7 @@ export interface Task extends TaskRow {
   purchase: Purchase | null;
   timeline: AuditEvent[];
   control: {
+    discoveryQueued?: boolean;
     requirements?: { requiresTwInvoice: boolean; requiresRegistryCertification: boolean } | null;
     selectedService?: { serviceId: string; selectionHash: string } | null;
     requestKey: string;
@@ -225,11 +232,11 @@ export const running = (status: string) =>
     "FINAL_ANCHOR_PENDING",
   ].includes(status);
 const labels: Record<string, string> = {
-  CREATED: "待探索",
+  CREATED: "已受理",
   WAITING_SELECTION: "待選擇服務",
   PARSING: "受理中",
-  DISCOVERING: "查詢供應商",
-  EVALUATING: "審核中",
+  DISCOVERING: "受理中",
+  EVALUATING: "受理中",
   REJECTED: "未核准",
   AUTH_ANCHOR_PENDING: "授權確認中",
   PAYING: "付款中",

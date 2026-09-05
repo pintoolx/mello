@@ -6,6 +6,7 @@ import {
   MELLO_NETWORK,
   MelloError,
   ServiceRecordSchema,
+  getMarketService,
   redactSensitiveText,
   sanitizedErrorMessage,
   type CompanyProfileInput,
@@ -21,7 +22,7 @@ import type {
   PurchaseRetryState,
   TaskExecutionState,
 } from "./contracts.js";
-import { acquireWorkflowQueueExclusiveLock } from "../modules/workflow-jobs/queue-lock.js";
+import { acquireTaskDispatchLock, acquireWorkflowQueueExclusiveLock, acquireWorkflowQueueSharedLock } from "../modules/workflow-jobs/queue-lock.js";
 
 const PURCHASE_DETAIL_INCLUDE = {
   task: true,
@@ -93,7 +94,17 @@ export function explorerLinksForPurchase(
   };
 }
 
-function normalizedService(
+function catalogDisplay(service: { id: string; sellerId: string; category: string; displayName?: string | null }) {
+  const market = getMarketService(service.id);
+  // Only canonical new identities receive branding. Legacy purchase joins keep
+  // their original service name and legal seller identity, including after archive.
+  if (market && market.sellerId === service.sellerId && market.category === service.category) {
+    return { displayName: market.displayName, sellerDisplayName: market.sellerDisplayName, description: market.description };
+  }
+  return service.displayName ? { displayName: service.displayName } : {};
+}
+
+export function normalizedService(
   service: {
     id: string;
     displayName?: string | null;
@@ -119,7 +130,7 @@ function normalizedService(
 ): unknown {
   return ServiceRecordSchema.parse({
     id: service.id,
-    ...(service.displayName ? { displayName: service.displayName } : {}),
+    ...catalogDisplay(service),
     sellerId: service.sellerId,
     sellerLegalName: service.seller.legalName,
     sellerBusinessId: service.seller.businessId,
@@ -222,7 +233,7 @@ export class PrismaCoreApiRepository implements CoreApiRepository {
   }
 
   async listServices(category?: string): Promise<unknown[]> {
-    const where: Prisma.ServiceWhereInput = {};
+    const where: Prisma.ServiceWhereInput = { active: true, seller: { status: "ACTIVE" } };
     if (category) where.category = category;
     const services = await this.prisma.service.findMany({
       where,
@@ -358,7 +369,7 @@ export class PrismaCoreApiRepository implements CoreApiRepository {
         taskStatus: purchase.task.status,
         selectedService: {
           id: purchase.service.id,
-          ...(purchase.service.displayName ? { displayName: purchase.service.displayName } : {}),
+          ...catalogDisplay(purchase.service),
           sellerId: purchase.service.sellerId,
           sellerLegalName: purchase.service.seller.legalName,
           priceAtomic: purchase.service.priceAtomic,
@@ -723,6 +734,24 @@ export class PrismaCoreApiRepository implements CoreApiRepository {
   async recordBackgroundFailure(input: BackgroundFailureInput): Promise<void> {
     const code = errorCode(input.error);
     const message = errorMessage(input.error);
+    if (input.operation === "DISCOVER_TASK") {
+      if (!input.taskId || !input.jobId) return;
+      const { taskId, jobId } = input;
+      await this.prisma.$transaction(async (transaction) => {
+        await acquireWorkflowQueueSharedLock(transaction);
+        await acquireTaskDispatchLock(transaction, taskId);
+        const task = await transaction.task.findUnique({ where: { id: taskId }, include: { control: true, purchase: true } });
+        if (!task || task.control?.discoveryJobId !== jobId || task.control.selectedService || task.control.approvedAt || task.purchase ||
+          !["CREATED", "PARSING", "DISCOVERING", "EVALUATING"].includes(task.status)) return;
+        const changed = await transaction.task.updateMany({ where: { id: taskId, status: task.status,
+          control: { is: { discoveryJobId: jobId } } }, data: { status: "FAILED", errorCode: code, errorMessage: message } });
+        if (changed.count !== 1) return;
+        await transaction.auditEvent.create({ data: { aggregateType: "TASK", aggregateId: taskId, taskId, requestId: input.requestId,
+          actorType: "SYSTEM", eventType: "BACKGROUND_DISCOVER_TASK_FAILED_FINAL", stage: "FAILED_FINAL",
+          payload: { jobId, errorCode: code, paymentCreated: false, automaticRepaymentAllowed: false, manualDiscoveryRetryAvailable: true } } });
+      });
+      return;
+    }
     if (input.operation === "RUN_TASK" && input.taskId) {
       const taskId = input.taskId;
       await this.prisma.$transaction(async (transaction) => {

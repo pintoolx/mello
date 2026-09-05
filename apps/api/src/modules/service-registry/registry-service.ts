@@ -1,27 +1,60 @@
 import type { Prisma, PrismaClient } from "@mello/db";
-import { hashCanonicalJson, MelloError, ServiceRecordSchema, type ServiceRecord } from "@mello/shared";
+import { getMarketService, hashCanonicalJson, MelloError, SERVICE_CATEGORIES, serviceDiscoveryQuery, ServiceRecordSchema, type ServiceCategory, type ServiceRecord } from "@mello/shared";
 import { appendAuditEvent } from "../audit/index.js";
 import { type BazaarDiscovery, type BazaarResource, type BazaarResult } from "./bazaar-client.js";
 import { isPublicServiceEndpoint, serviceBindingHash, verificationSummary, type VerifyServiceInput, type VerificationRecord } from "./verification.js";
 
 export function normalizeRegistryService(service: {
+  id: string;
+  sellerId: string;
+  category: string;
   seller: { legalName: string; businessId: string | null; payToAddress: string; invoiceCapability: string; invoiceProvider: string; status: string };
   active: boolean;
 }) {
-  return ServiceRecordSchema.parse({
+  const normalized = ServiceRecordSchema.parse({
     ...service, sellerLegalName: service.seller.legalName,
     sellerBusinessId: service.seller.businessId, payToAddress: service.seller.payToAddress,
     invoiceCapability: service.seller.invoiceCapability, invoiceProvider: service.seller.invoiceProvider,
     active: service.active && service.seller.status === "ACTIVE",
   });
+  const product = getMarketService(normalized.id);
+  return product?.sellerId === normalized.sellerId && product.category === normalized.category ? {
+    ...normalized, displayName: product.displayName, sellerDisplayName: product.sellerDisplayName, description: product.description,
+  } : normalized;
 }
 
 export function matchingBazaarResource(service: ServiceRecord, resource: BazaarResource): boolean {
   return resource.resource === service.endpoint && resource.extensions.bazaar.info.input.method === service.method &&
+    advertisesServiceInput(service, resource) &&
     resource.accepts.some((offer) => offer.scheme === "exact" && offer.network === service.network &&
       offer.asset.toLowerCase() === service.tokenAddress.toLowerCase() &&
       offer.payTo.toLowerCase() === service.payToAddress.toLowerCase() &&
       BigInt(offer.amount) === BigInt(service.priceAtomic));
+}
+
+function object(value: unknown): Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+export function advertisesServiceInput(service: ServiceRecord, resource: BazaarResource): boolean {
+  if (service.category === "credit_report") return true;
+  const schema = object(resource.extensions.bazaar.schema);
+  const input = object(object(schema["properties"])["input"]);
+  const body = object(object(input["properties"])["body"]);
+  const alternatives = body["oneOf"];
+  if (!Array.isArray(alternatives) || alternatives.length > 16) return false;
+  return alternatives.some((value: unknown) => {
+    const branch = object(value);
+    const properties = object(branch["properties"]);
+    const query = object(properties["serviceQuery"]);
+    const required = branch["required"];
+    return branch["type"] === "object" && Array.isArray(required) &&
+      ["serviceId", "serviceCategory", "serviceQuery"].every((name) => required.includes(name)) &&
+      object(properties["serviceId"])["const"] === service.id &&
+      object(properties["serviceCategory"])["const"] === service.category &&
+      query["type"] === "string" && typeof query["minLength"] === "number" && query["minLength"] >= 1 &&
+      typeof query["maxLength"] === "number" && query["maxLength"] <= 200;
+  });
 }
 
 export interface DiscoveryEvidence {
@@ -61,25 +94,25 @@ export function assessDiscovery(
 export class ServiceRegistry {
   constructor(private readonly prisma: PrismaClient, private readonly bazaar: BazaarDiscovery, private readonly now = () => new Date()) {}
 
-  async records() {
+  async records(category?: ServiceCategory) {
     return this.prisma.service.findMany({
-      where: { category: "credit_report" }, orderBy: { id: "asc" }, include: { seller: true, verification: true },
+      where: { category: category ?? { in: [...SERVICE_CATEGORIES] } }, orderBy: { id: "asc" }, include: { seller: true, verification: true },
     });
   }
 
-  async list() {
-    const records = await this.records();
+  async list(category?: ServiceCategory) {
+    const records = await this.records(category);
     return records.map((record) => {
       const service = normalizeRegistryService(record);
       return { ...service, verification: verificationSummary(service, record.verification, this.now()) };
-    });
+    }).filter((service) => service.active);
   }
 
-  async discover(requiresCertification = true) {
+  async discover(requiresCertification = true, category?: ServiceCategory) {
     // Discovery is the candidate source; local rows only provide identity/trust.
     // Never send the purchase prompt or target company to this public catalog.
-    const result = await this.bazaar.search({ query: "credit report" });
-    const records = await this.records();
+    const result = await this.bazaar.search({ query: serviceDiscoveryQuery(category) });
+    const records = await this.records(category);
     const services = records.map(normalizeRegistryService);
     const assessments = services.map((service, index) => assessDiscovery(service, records[index]?.verification, result, this.now(), requiresCertification));
     return {
@@ -90,8 +123,8 @@ export class ServiceRegistry {
     };
   }
 
-  async discoverLocal(requiresCertification: boolean) {
-    const records = await this.records();
+  async discoverLocal(requiresCertification: boolean, category?: ServiceCategory) {
+    const records = await this.records(category);
     const services = records.map(normalizeRegistryService);
     const fetchedAt = this.now().toISOString();
     const assessments = services.map((service, index) => {

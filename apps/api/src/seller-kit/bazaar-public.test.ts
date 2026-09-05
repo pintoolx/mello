@@ -40,7 +40,7 @@ describe("public Bazaar seller protocol (fixture facilitator, no chain funds)", 
     const { app } = application();
     const res = await request(app).post("/v1/credit-report").send({}).expect(402);
     const required = decodePaymentRequiredHeader(res.headers[PAYMENT_REQUIRED_HEADER]!);
-    expect(required.extensions?.["bazaar"]).toMatchObject({ info: { input: { type: "http", method: "POST", body: { targetCompanyName: "Example Co." } } } });
+    expect(required.extensions?.["bazaar"]).toMatchObject({ info: { input: { type: "http", method: "POST", body: { serviceId: "macro-analysis", serviceCategory: "macro_analysis", serviceQuery: "總經分析" } } } });
     expect(validateDiscoveryExtension(required.extensions?.["bazaar"] as Parameters<typeof validateDiscoveryExtension>[0]).valid).toBe(true);
     expect(required.extensions).toHaveProperty("tw-einvoice");
     expect(JSON.stringify(required.extensions)).not.toContain("test-only-public-seller-context-secret");
@@ -60,9 +60,17 @@ describe("public Bazaar seller protocol (fixture facilitator, no chain funds)", 
     const before = { verifies, settles };
     await request(app).post("/v1/credit-report").send({ targetCompanyName: "Example Co.", purchaseContextToken: "forged-token-not-issued-by-mello" }).expect(401);
     await request(app).post("/v1/credit-report").set("payment-signature", "invalid").send({}).expect(400);
+    await request(app).post("/v1/credit-report").set("payment-signature", "invalid")
+      .send({ serviceId: "macro-analysis", serviceCategory: "crypto_market", serviceQuery: "總經分析" }).expect(400);
+    await request(app).post("/v1/credit-report").set("payment-signature", "invalid")
+      .send({ serviceId: "stock-analysis", serviceCategory: "stock_analysis", serviceQuery: "個股分析" }).expect(400);
     expect({ verifies, settles }).toEqual(before);
   });
-  it("serves a public x402 buyer without a Mello token and replays without another settlement", async () => {
+  it.each([
+    { targetCompanyName: "Example Co." },
+    { serviceId: "macro-analysis", serviceCategory: "macro_analysis", serviceQuery: "總經分析" },
+    { serviceId: "crypto-market", serviceCategory: "crypto_market", serviceQuery: "加密市場資訊" },
+  ])("serves a public x402 buyer without a Mello token and replays without another settlement: %j", async (body) => {
     const { app, config } = application();
     const before = settles;
     const signature = encodePaymentSignatureHeader({
@@ -75,10 +83,11 @@ describe("public Bazaar seller protocol (fixture facilitator, no chain funds)", 
       extensions: { "payment-identifier": { info: { required: true, id: "pay_bazaar_public_protocol_0001" } } },
     });
     const call = () => request(app).post("/v1/credit-report").set("payment-signature", signature)
-      .set("x-mello-internal-purchase-id", "untrusted-header").send({ targetCompanyName: "Example Co." });
+      .set("x-mello-internal-purchase-id", "untrusted-header").send(body);
     const first = await call().expect(200);
     const second = await call().expect(200);
     expect(first.body).toMatchObject({ isDemo: true, provider: "seller-b" });
+    if (body.serviceId) expect(first.body).toMatchObject({ ...body, reportVersion: "market-v1" });
     expect(second.body).toEqual(first.body);
     expect(settles - before).toBe(1);
   });

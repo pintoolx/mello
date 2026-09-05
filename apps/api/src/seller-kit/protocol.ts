@@ -16,6 +16,7 @@ import {
 } from "@x402/extensions/payment-identifier";
 import type { SellerServerConfig } from "./types.js";
 import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
+import { MARKET_SERVICE_CATALOG } from "@mello/shared";
 
 export {
   decodePaymentRequiredHeader,
@@ -24,6 +25,16 @@ export {
 } from "@x402/core/http";
 
 export const CREDIT_REPORT_ROUTE = "/v1/credit-report" as const;
+
+export function sellerResourceMetadata(config: SellerServerConfig) {
+  const offerings = MARKET_SERVICE_CATALOG.filter((service) => service.sellerId === config.sellerId);
+  const serviceName = offerings.map((service) => service.displayName).join("、") || "Demo credit report";
+  return {
+    description: `${offerings[0]?.sellerDisplayName ?? config.sellerName}：${serviceName}（Demo；保留 legacy credit report）`,
+    serviceName,
+    tags: ["market-analysis", ...offerings.flatMap((service) => [service.id, service.bazaarQuery]), "credit-report", "demo"],
+  };
+}
 
 export function createPaymentRequirements(
   config: SellerServerConfig,
@@ -48,20 +59,39 @@ export function createPaymentRequirements(
 export function createRouteExtensions(
   config: SellerServerConfig,
 ): Record<string, unknown> {
+  const offerings = MARKET_SERVICE_CATALOG.filter((service) => service.sellerId === config.sellerId);
+  const sample = offerings[0];
   return {
     ...(config.routeExtensions ?? {}),
     ...(config.bazaarEnabled ? declareDiscoveryExtension({
       // The pinned x402 SDK enriches method from the POST route at runtime.
       bodyType: "json",
-      input: { targetCompanyName: "Example Co." },
+      input: sample ? { serviceId: sample.id, serviceCategory: sample.category, serviceQuery: sample.displayName }
+        : { targetCompanyName: "Example Co." },
       inputSchema: {
-        type: "object", properties: {
-          targetCompanyName: { type: "string", minLength: 1, maxLength: 200 },
-          purchaseContextToken: { type: "string", description: "Optional Mello correlation token. Not required for public purchases.", minLength: 16, maxLength: 4096 },
-        },
-        required: ["targetCompanyName"], additionalProperties: false,
+        oneOf: [
+          ...offerings.map((service) => ({
+            type: "object", properties: {
+              serviceId: { type: "string", const: service.id },
+              serviceCategory: { type: "string", const: service.category },
+              serviceQuery: { type: "string", minLength: 1, maxLength: 200 },
+              purchaseContextToken: { type: "string", minLength: 16, maxLength: 4096 },
+            }, required: ["serviceId", "serviceCategory", "serviceQuery"], additionalProperties: false,
+          })),
+          { type: "object", properties: {
+            targetCompanyName: { type: "string", minLength: 1, maxLength: 200 },
+            purchaseContextToken: { type: "string", description: "Optional Mello correlation token. Not required for public purchases.", minLength: 16, maxLength: 4096 },
+          }, required: ["targetCompanyName"], additionalProperties: false },
+        ],
       },
-      output: { example: {
+      output: { example: sample ? {
+        reportVersion: "market-v1", reportId: "rpt_00000000000000000000", provider: config.sellerId,
+        serviceId: sample.id, serviceCategory: sample.category, serviceQuery: sample.displayName,
+        title: sample.displayName, summary: sample.description,
+        sections: [{ title: "研究重點（Demo）", points: ["模擬研究資訊；未引用即時行情。"] }],
+        generatedAt: "2026-09-05T00:00:00.000Z", paymentMode: "x402", isDemo: true,
+        disclaimer: "模擬研究內容，非即時市場資料，亦非投資建議。",
+      } : {
         reportId: "rpt_00000000000000000000", provider: config.sellerId,
         targetCompanyName: "Example Co.", riskScore: 50, riskLevel: "MEDIUM",
         summary: "Demo credit report only", generatedAt: "2026-09-05T00:00:00.000Z",
@@ -80,10 +110,8 @@ export function createMockPaymentRequired(
     error: "Payment required",
     resource: {
       url: `${config.publicUrl.replace(/\/$/, "")}${CREDIT_REPORT_ROUTE}`,
-      description: `${config.sellerName} demo credit report`,
+      ...sellerResourceMetadata(config),
       mimeType: "application/json",
-      serviceName: config.sellerName,
-      tags: ["credit-report", "demo"],
     },
     accepts: [createPaymentRequirements(config)],
     extensions: createRouteExtensions(config),

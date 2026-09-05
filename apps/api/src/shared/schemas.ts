@@ -7,6 +7,7 @@ import {
   USDC_SYMBOL,
 } from "./constants.js";
 import { isValidTaiwanBusinessId } from "./business-id.js";
+import { ServiceCategorySchema } from "./service-catalog.js";
 import {
   AnchorStatusSchema,
   InvoiceStatusSchema,
@@ -74,8 +75,9 @@ export const PolicyInputSchema = z.object({
 export type PolicyInput = z.infer<typeof PolicyInputSchema>;
 
 export const PurchaseIntentSchema = z.object({
-  serviceCategory: z.literal("credit_report"),
-  targetCompanyName: z.string().trim().min(1),
+  serviceCategory: ServiceCategorySchema,
+  serviceQuery: z.string().trim().min(1).max(200).optional(),
+  targetCompanyName: z.string().trim().min(1).optional(),
   maxAmount: z.object({
     atomic: AtomicAmountSchema,
     display: z.string().min(1),
@@ -86,6 +88,15 @@ export const PurchaseIntentSchema = z.object({
   costCenter: z.string().trim().min(1),
   networkPreference: z.literal(MELLO_NETWORK),
   usedDemoDefaultTarget: z.boolean().default(false),
+}).superRefine((intent, context) => {
+  if (intent.serviceCategory === "credit_report") {
+    if (!intent.targetCompanyName) context.addIssue({ code: "custom", path: ["targetCompanyName"], message: "信用報告需要明確的企業徵信標的。" });
+    if (intent.serviceQuery !== undefined) context.addIssue({ code: "custom", path: ["serviceQuery"], message: "信用報告使用 targetCompanyName，不應填入分析服務需求。" });
+  } else {
+    if (!intent.serviceQuery) context.addIssue({ code: "custom", path: ["serviceQuery"], message: "分析服務需要明確的服務需求。" });
+    if (intent.targetCompanyName !== undefined) context.addIssue({ code: "custom", path: ["targetCompanyName"], message: "分析服務使用 serviceQuery，不應填入企業徵信標的。" });
+    if (intent.usedDemoDefaultTarget) context.addIssue({ code: "custom", path: ["usedDemoDefaultTarget"], message: "分析服務不得使用預設企業標的。" });
+  }
 });
 export type PurchaseIntent = z.infer<typeof PurchaseIntentSchema>;
 
@@ -94,11 +105,13 @@ export const ServiceRecordSchema = z.object({
   displayName: z.string().trim().min(1).max(100).nullable().optional(),
   sellerId: z.enum(SELLER_IDS),
   sellerLegalName: z.string().min(1),
+  sellerDisplayName: z.string().trim().min(1).max(100).optional(),
+  description: z.string().trim().min(1).max(1000).optional(),
   sellerBusinessId: z.string().nullable(),
   payToAddress: EvmAddressSchema,
   invoiceCapability: z.enum(["NONE", "TW_B2B_DEMO"]),
   invoiceProvider: z.enum(["NONE", "MOCK", "ECPAY_STAGE"]),
-  category: z.literal("credit_report"),
+  category: ServiceCategorySchema,
   endpoint: z.url(),
   method: z.literal("POST"),
   priceAtomic: AtomicAmountSchema,
@@ -116,6 +129,9 @@ export const CandidateEvaluationSchema = z.object({
   displayName: z.string().trim().min(1).max(100).nullable().optional(),
   sellerId: z.enum(SELLER_IDS),
   sellerLegalName: z.string().min(1),
+  sellerDisplayName: z.string().trim().min(1).max(100).optional(),
+  description: z.string().trim().min(1).max(1000).optional(),
+  category: ServiceCategorySchema.optional(),
   invoiceCapability: z.enum(["NONE", "TW_B2B_DEMO"]),
   supportsTwInvoice: z.boolean(),
   priceAtomic: AtomicAmountSchema,
@@ -154,6 +170,12 @@ export const CreateTaskSchema = z.object({
   approvalLimitAtomic: AtomicAmountSchema.max(78).optional(),
   expectedPayTo: EvmAddressSchema.optional(),
   requirements: TaskRequirementsSchema.optional(),
+  attachmentIds: z.array(z.uuid()).max(3).refine((ids) => new Set(ids).size === ids.length, "附件不能重複").optional(),
+}).superRefine((input, context) => {
+  if (input.attachmentIds?.length) {
+    if (!input.requestKey) context.addIssue({ code: "custom", path: ["requestKey"], message: "附件必須綁定申請編號。" });
+    if (!input.requirements) context.addIssue({ code: "custom", path: ["requirements"], message: "附件只適用於需確認選用服務的申請。" });
+  }
 });
 
 export const Erc3009AuthorizationRecordSchema = z.object({

@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { hasSession, sameOrigin } from "@/lib/server-session";
+import { boundedBody, BodyTooLarge } from "@/lib/bounded-body";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 type Context = { params: Promise<{ path: string[] }> };
 const UUID = "[0-9a-fA-F-]{36}";
-const READ = new RegExp(`^(settings|company|policies/active|controls|demo/health|dashboard/summary|services|sellers|registry(?:/discovery)?|audit-events|tasks|purchases|tasks/${UUID}(?:/events)?|purchases/${UUID}(?:/events)?)$`);
-const WRITE = new RegExp(`^(tasks|tasks/${UUID}/(?:discover|select|run|approve|retry-invoice|retry-anchor|reconcile-payment)|purchases/${UUID}/(?:retry-invoice|retry-anchor|reconcile-payment))$`);
+const READ = new RegExp(`^(settings|company|policies/active|controls|demo/health|dashboard/summary|services|sellers|registry(?:/discovery)?|audit-events|tasks|purchases|tasks/${UUID}(?:/events|/attachments(?:/${UUID})?)?|purchases/${UUID}(?:/events)?)$`);
+const WRITE = new RegExp(`^(attachments|tasks|tasks/${UUID}/(?:discover|select|run|approve|retry-invoice|retry-anchor|reconcile-payment)|purchases/${UUID}/(?:retry-invoice|retry-anchor|reconcile-payment))$`);
 
 async function proxy(request: NextRequest, context: Context) {
   const fail = (status: number, message: string) => NextResponse.json({ error: { message } }, { status, headers: { "cache-control": "no-store" } });
@@ -20,8 +21,8 @@ async function proxy(request: NextRequest, context: Context) {
   const adminKey = process.env.DEMO_ADMIN_TOKEN;
   if (!base || !apiKey || !adminKey) return fail(503, "後端連線尚未設定");
   try {
-    const body = request.method === "GET" ? undefined : await request.text();
-    if (body && Buffer.byteLength(body) > 64 * 1024) return fail(413, "請求內容過長");
+    const maxBytes = path === "attachments" && request.method === "POST" ? 3 * 1024 * 1024 : 64 * 1024;
+    const body = request.method === "GET" ? undefined : await boundedBody(request, maxBytes);
     const headers: Record<string, string> = { "content-type": "application/json", "x-mello-api-key": apiKey };
     if (request.method === "PUT" || /\/(approve|reconcile-payment)$/.test(path)) headers["x-demo-admin-token"] = adminKey;
     const upstream = await fetch(new URL(`/api/v1/${path}${request.nextUrl.search}`, base), {
@@ -29,8 +30,11 @@ async function proxy(request: NextRequest, context: Context) {
     });
     if (!upstream.headers.get("content-type")?.includes("application/json")) return fail(502, "後端回應格式異常，暫時無法取得狀態。");
     return NextResponse.json(await upstream.json(), { status: upstream.status,
-      headers: { "cache-control": "no-store", "x-request-id": upstream.headers.get("x-request-id") ?? "" } });
-  } catch { return fail(502, "暫時無法連線後端；付款可能仍在處理，請查看既有案件狀態，勿重複建立採購"); }
+      headers: { "cache-control": "no-store", "x-content-type-options": "nosniff", "x-request-id": upstream.headers.get("x-request-id") ?? "" } });
+  } catch (error) {
+    if (error instanceof BodyTooLarge) return fail(413, "請求內容過長；每個附件不可超過 2 MB");
+    return fail(502, "暫時無法連線後端；付款可能仍在處理，請查看既有案件狀態，勿重複建立採購");
+  }
 }
 
 export const GET = proxy;

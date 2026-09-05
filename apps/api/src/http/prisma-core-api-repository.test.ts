@@ -5,8 +5,50 @@ import { loadConfig } from "../config.js";
 import {
   deliveryEvidenceForResponse,
   explorerLinksForPurchase,
+  normalizedService,
   PrismaCoreApiRepository,
 } from "./prisma-core-api-repository.js";
+
+describe("market catalog API projection", () => {
+  const service = {
+    id: "macro-analysis", sellerId: "seller-b", category: "macro_analysis", displayName: "總經分析",
+    endpoint: "https://seller.example/v1/credit-report", method: "POST", priceAtomic: "50000",
+    tokenSymbol: "USDC", tokenAddress: BASE_SEPOLIA_USDC, tokenDecimals: 6, network: MELLO_NETWORK,
+    supportsTwInvoice: true, active: true,
+    seller: { displayName: "mello資本", legalName: "Mello Data Labs B (Demo)", businessId: "24536806",
+      payToAddress: "0x2222222222222222222222222222222222222222", invoiceCapability: "TW_B2B_DEMO", invoiceProvider: "MOCK" },
+  };
+  it("projects market branding without changing the seller's legal identity", () => {
+    expect(normalizedService(service)).toMatchObject({ displayName: "總經分析", sellerDisplayName: "mello資本",
+      sellerLegalName: "Mello Data Labs B (Demo)", category: "macro_analysis", description: expect.any(String) });
+  });
+  it("does not apply a new brand or service description to historical credit reports", () => {
+    const result = normalizedService({ ...service, id: "credit-report-c", category: "credit_report", displayName: "Mello 信用報告 C（Demo）", active: false });
+    expect(result).toMatchObject({ displayName: "Mello 信用報告 C（Demo）", sellerLegalName: "Mello Data Labs B (Demo)", active: false });
+    expect(result).not.toHaveProperty("sellerDisplayName");
+    expect(result).not.toHaveProperty("description");
+  });
+  it.each([{ sellerId: "seller-a" }, { category: "credit_report" }, { id: "custom-service" }])("does not manufacture canonical branding for a mismatched identity: %j", (change) => {
+    expect(normalizedService({ ...service, ...change })).not.toHaveProperty("sellerDisplayName");
+  });
+  it("lists only active services belonging to active sellers", async () => {
+    const findMany = vi.fn(async () => [service]);
+    const client = { service: { findMany } } as unknown as PrismaClient;
+    const config = loadConfig({ NODE_ENV: "test", DATABASE_URL: "postgresql://mello:mello@localhost:5432/mello_test" });
+    const repository = new PrismaCoreApiRepository(client, config);
+    expect(await repository.listServices("macro_analysis")).toEqual([normalizedService(service)]);
+    expect(findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { active: true, seller: { status: "ACTIVE" }, category: "macro_analysis" } }));
+  });
+  it("keeps legacy purchase-list names unchanged after the seller receives a market brand", async () => {
+    const historicalService = { ...service, id: "credit-report-b", category: "credit_report", displayName: null, active: false };
+    const client = { purchase: { findMany: vi.fn(async () => [{ id: "purchase-legacy", taskId: "task-legacy", task: { prompt: "Old credit report", status: "COMPLETED" }, service: historicalService, authorization: null }]), count: vi.fn(async () => 1) } } as unknown as PrismaClient;
+    const config = loadConfig({ NODE_ENV: "test", DATABASE_URL: "postgresql://mello:mello@localhost:5432/mello_test" });
+    const result = await new PrismaCoreApiRepository(client, config).listPurchases({ limit: 10, offset: 0 });
+    expect(result.items[0]).toMatchObject({ selectedService: { id: "credit-report-b", sellerLegalName: "Mello Data Labs B (Demo)" } });
+    expect(result.items[0]).not.toHaveProperty("selectedService.sellerDisplayName");
+    expect(result.items[0]).not.toHaveProperty("selectedService.displayName");
+  });
+});
 
 describe("purchase delivery evidence", () => {
   it("keeps a quarantined report out of API output until delivery is promoted", () => {

@@ -159,6 +159,7 @@ model Policy {
 
 model Seller {
   id                String            @id @db.VarChar(64)
+  displayName       String?           @db.VarChar(100)
   legalName         String            @db.VarChar(100)
   businessId        String?           @db.Char(8)
   payToAddress      String            @db.VarChar(42)
@@ -211,6 +212,7 @@ model ServiceVerification {
 }
 
 model Task {
+  attachments        TaskAttachment[]
   control            TaskControl?
   id                 String     @id @default(uuid()) @db.Uuid
   prompt             String
@@ -232,6 +234,7 @@ model Task {
 
 // Console request identity and approval evidence are separate from payment state.
 model TaskControl {
+  discoveryJobId          String?  @db.Uuid
   taskId                  String   @id @db.Uuid
   requestKey              String   @unique @db.VarChar(128)
   requestHash             String   @db.VarChar(66)
@@ -244,6 +247,26 @@ model TaskControl {
   approvedAt              DateTime? @db.Timestamptz(3)
   paymentReleaseGrantedAt DateTime? @db.Timestamptz(3)
   task                    Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+}
+
+// Opaque, authenticated file storage only. No extraction, indexing or LLM input.
+model TaskAttachment {
+  id           String   @id @default(uuid()) @db.Uuid
+  taskId       String?  @db.Uuid
+  requestKey   String   @db.VarChar(128)
+  clientFileId String   @db.Uuid
+  fileName     String   @db.VarChar(180)
+  mediaType    String   @db.VarChar(100)
+  sizeBytes    Int
+  sha256       String   @db.Char(64)
+  content      Bytes
+  createdAt    DateTime @default(now()) @db.Timestamptz(3)
+  expiresAt    DateTime @db.Timestamptz(3)
+  task         Task?    @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@unique([requestKey, clientFileId])
+  @@index([taskId, createdAt])
+  @@index([taskId, expiresAt])
 }
 
 model PaymentControl {

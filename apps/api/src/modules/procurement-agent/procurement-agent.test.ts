@@ -342,7 +342,7 @@ describe("OpenAI procurement parser merge", () => {
       retryable: false,
       details: {
         parser: "deterministic",
-        reason: "Demo parser only supports credit report procurement",
+        reason: "請指定要搜尋的服務：個股分析、總經分析、加密市場資訊或期貨分析。",
       },
     });
     expect(parse).toHaveBeenCalledTimes(2);
