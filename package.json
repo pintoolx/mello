@@ -2,6 +2,7 @@
   "name": "mello",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "npm@11.19.1",
   "workspaces": [
     "apps/*",
     "packages/*"
@@ -9,11 +10,32 @@
   "scripts": {
     "dev": "npm run dev --workspace @mello/web",
     "dev:web": "npm run dev --workspace @mello/web",
-    "build": "npm run build --workspace @mello/web",
+    "build": "npm run build --workspaces --if-present",
     "start": "npm run start --workspace @mello/web",
-    "lint": "npm run lint --workspace @mello/web",
-    "typecheck": "npm run typecheck --workspace @mello/web",
+    "lint": "npm run lint --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
     "qa:visual": "npm run qa:visual --workspace @mello/web",
-    "record:demo": "npm run record:demo --workspace @mello/web"
+    "record:demo": "npm run record:demo --workspace @mello/web",
+    "dev:api": "npm run dev --workspace @mello/api",
+    "dev:backend": "npm run dev:stack --workspace @mello/api",
+    "test": "npm run test --workspace @mello/api",
+    "test:integration": "npm run test:integration --workspace @mello/api",
+    "db:migrate": "npm run db:migrate --workspace @mello/api",
+    "seed": "npm run seed --workspace @mello/api",
+    "demo:health": "npm run demo:health --workspace @mello/api",
+    "demo:smoke": "npm run demo:smoke --workspace @mello/api",
+    "contract:test": "npm run contract:test --workspace @mello/api"
+  },
+  "engines": {
+    "node": ">=22.9.0",
+    "npm": ">=11.19.1"
+  },
+  "overrides": {
+    "axios": "1.20.0",
+    "deepmerge-ts": "8.0.2",
+    "shell-quote": "1.9.0"
+  },
+  "devDependencies": {
+    "@openzeppelin/contracts": "5.6.1"
   }
 }

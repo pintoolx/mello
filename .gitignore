@@ -32,6 +32,15 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+.ENV*
+!.env.example
+
+# Backend generated files and contract build/deployment output
+apps/api/src/db/generated/
+apps/api/prisma/dev.db*
+contracts/cache/
+contracts/out/
+contracts/broadcast/
 
 # vercel
 .vercel/
