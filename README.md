@@ -1,6 +1,6 @@
 # Mello monorepo
 
-Mello 是台灣企業的 Agent Purchase-to-Pay 控制層。`apps/web` 保留已完成的 Next.js 黑客松視覺 Demo，`apps/api` 已整合採購 workflow、PostgreSQL、x402 與稽核後端。前端目前仍使用本地模擬資料，尚未接線到 API；正式電子發票 adapter 尚未實作。
+Mello 是台灣企業的 Agent Purchase-to-Pay 控制層。`apps/web` 包含正式產品官網與可操作的 Next.js 產品預覽，`apps/api` 已整合採購 workflow、PostgreSQL、x402 與稽核後端。前端目前仍使用本地模擬資料，尚未接線到 API；正式電子發票 adapter 尚未實作。
 
 ## Repository structure
 
@@ -47,6 +47,8 @@ npm run typecheck
 
 所有付款與發票皆明確標示為 `SIMULATED` / `SANDBOX` / `TEST INVOICE`。
 
+錄製 Hackathon Demo Video 時，請依照 [`docs/demo-recording-script.md`](docs/demo-recording-script.md) 的畫面設定、點擊順序與旁白節奏操作 `/app`。影片不放入官網。
+
 ## Visual QA
 
 先以 production mode 啟動在 4173，再從另一個 terminal 執行 QA：
@@ -57,12 +59,6 @@ npm run qa:visual
 ```
 
 QA 會以 headless Chrome 驗證桌機與手機的正常、重複採購、低預算、地址不符及凍結狀態；報告與全頁截圖輸出到系統暫存目錄的 `mello-visual-qa`。
-
-首頁的產品操作錄影由新版企業系統介面產生。需要重新錄製時，先啟動 production server，再執行：
-
-```bash
-npm run record:demo
-```
 
 ## Backend teammate workflow
 

@@ -15,7 +15,6 @@
     "lint": "npm run lint --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "qa:visual": "npm run qa:visual --workspace @mello/web",
-    "record:demo": "npm run record:demo --workspace @mello/web",
     "dev:api": "npm run dev --workspace @mello/api",
     "dev:backend": "npm run dev:stack --workspace @mello/api",
     "test": "npm run test --workspace @mello/api",

@@ -1,11 +1,7 @@
 import { spawn } from "node:child_process";
 import { mkdir, writeFile } from "node:fs/promises";
-import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import path from "node:path";
-
-const require = createRequire(import.meta.url);
-const { WebSocket } = require("undici");
 
 const baseUrl = process.env.MELLO_QA_URL ?? "http://localhost:4173";
 const chromeBin = process.env.CHROME_BIN ?? "google-chrome";
@@ -154,7 +150,6 @@ async function runViewport(cdp, name, width, height) {
   const compactHomeText = home.text.replace(/\s/g, "");
   result.checks.homeNoHorizontalOverflow = !home.horizontalOverflow;
   result.checks.homeCopy = compactHomeText.includes("讓Agent付錢之後，帳還在。") && compactHomeText.includes("x402解決付款。Mello把帳做完。");
-  result.checks.homeRecording = await evaluate(cdp, `(() => { const video = document.querySelector("video"); return Boolean(video && video.currentSrc.includes("/demo/mello-workflow.mp4") && video.readyState >= 1); })()`);
   result.screenshots.home = await snapshot(cdp, `${name}-home`);
 
   await navigate(cdp, `${baseUrl}/app`);
