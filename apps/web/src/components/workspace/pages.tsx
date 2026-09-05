@@ -2,7 +2,19 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useRef, useState, type FormEvent } from "react";
+import {
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type FormEvent,
+} from "react";
+import {
+  atomicAmount,
+  PENDING_REQUEST_KEY,
+  readPendingRequest,
+  type TaskInput,
+} from "../../lib/task-input";
 import {
   api,
   dateTime,
@@ -10,6 +22,7 @@ import {
   running,
   shortId,
   type AuditEvent,
+  type Control,
   type PageResult,
   type Purchase,
   type Settings,
@@ -160,26 +173,116 @@ export function RequestList() {
   );
 }
 
-export function NewRequest({ settings }: { settings: Settings | null }) {
+const PENDING_CHANGED = "mello:pending-request-changed";
+function subscribePending(callback: () => void) {
+  window.addEventListener("storage", callback);
+  window.addEventListener(PENDING_CHANGED, callback);
+  return () => {
+    window.removeEventListener("storage", callback);
+    window.removeEventListener(PENDING_CHANGED, callback);
+  };
+}
+function pendingSnapshot() {
+  try {
+    return localStorage.getItem(PENDING_REQUEST_KEY) ?? "";
+  } catch {
+    return "unavailable";
+  }
+}
+
+export function NewRequest({
+  settings,
+  frozen,
+}: {
+  settings: Settings | null;
+  frozen: boolean;
+}) {
   const router = useRouter();
   const [target, setTarget] = useState("");
   const [budget, setBudget] = useState("0.10");
   const [notes, setNotes] = useState("");
+  const [approvalLimit, setApprovalLimit] = useState("");
+  const [expectedPayTo, setExpectedPayTo] = useState("");
+  const snapshot = useSyncExternalStore(
+    subscribePending,
+    pendingSnapshot,
+    () => "loading",
+  );
+  const stored = useMemo(() => {
+    try {
+      if (snapshot === "unavailable")
+        throw new Error("請允許本站使用瀏覽器儲存空間，再重新載入。");
+      return {
+        input:
+          snapshot === "loading"
+            ? null
+            : readPendingRequest({ getItem: () => snapshot }),
+        error: null,
+      };
+    } catch (cause) {
+      return {
+        input: null,
+        error: cause instanceof Error ? cause : new Error("待確認申請無法讀取"),
+      };
+    }
+  }, [snapshot]);
+  const saved = stored.input;
+  const storageReady = snapshot !== "loading" && !stored.error;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   const submitting = useRef(false);
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    await create();
+  }
+  async function create(recover = false) {
     if (submitting.current) return;
     submitting.current = true;
     setBusy(true);
     setError(null);
     try {
-      const prompt = `幫我買一份 ${target.trim()} 的信用報告，預算 ${budget} USDC，要開統編發票。${notes.trim() ? `\n補充需求：${notes.trim()}` : ""}`;
+      const previous = readPendingRequest(localStorage);
+      if (previous && !recover) {
+        throw new Error(
+          "前一筆申請尚未確認，請先找回原案件；不會另建第二筆付款。",
+        );
+      }
+      if (recover && !previous)
+        throw new Error("待確認申請已由另一分頁處理，請回採購清單確認。");
+      const budgetAtomic = previous ? null : atomicAmount(budget);
+      if (
+        budgetAtomic !== null &&
+        (BigInt(budgetAtomic) <= 0 ||
+          BigInt(budgetAtomic) > BigInt("1000000000000"))
+      )
+        throw new Error("預算須介於 0.000001 與 1000000 USDC 之間。");
+      const prompt =
+        previous?.prompt ??
+        `幫我買一份 ${target.trim()} 的信用報告，預算 ${money(budgetAtomic)} USDC，要開統編發票。${notes.trim() ? `\n補充需求：${notes.trim()}` : ""}`;
+      const input: TaskInput = previous ?? {
+        prompt,
+        requestKey: crypto.randomUUID(),
+        ...(approvalLimit
+          ? { approvalLimitAtomic: atomicAmount(approvalLimit) }
+          : {}),
+        ...(expectedPayTo.trim()
+          ? { expectedPayTo: expectedPayTo.trim() }
+          : {}),
+      };
+      // Persist before sending. A timeout never authorizes a new request key.
+      localStorage.setItem(PENDING_REQUEST_KEY, JSON.stringify(input));
+      window.dispatchEvent(new Event(PENDING_CHANGED));
       const result = await api<{ taskId: string }>("/tasks", {
         method: "POST",
-        body: JSON.stringify({ prompt }),
+        body: JSON.stringify(input),
       });
+      try {
+        if (readPendingRequest(localStorage)?.requestKey === input.requestKey)
+          localStorage.removeItem(PENDING_REQUEST_KEY);
+        window.dispatchEvent(new Event(PENDING_CHANGED));
+      } catch {
+        /* The existing task is known; navigate even if storage becomes unavailable. */
+      }
       router.push(`/app/tasks/${result.taskId}`);
     } catch (cause) {
       setError(cause instanceof Error ? cause : new Error("申請未能建立"));
@@ -197,18 +300,36 @@ export function NewRequest({ settings }: { settings: Settings | null }) {
           返回清單
         </Link>
       </PageHeading>
-      <ErrorMessage error={error} />
+      <ErrorMessage error={error || stored.error} />
+      {saved && (
+        <div className="case-alert" role="status">
+          <strong>有一筆建立結果待確認的申請</strong>
+          <p className="pending-request">{saved.prompt}</p>
+          <p>沿用原請求識別碼找回案件，不會自動送出採購或重複建立付款。</p>
+          <button
+            className="workspace-button"
+            type="button"
+            disabled={busy}
+            onClick={() => void create(true)}
+          >
+            {busy ? "找回中…" : "找回原申請"}
+          </button>
+        </div>
+      )}
       <form className="request-form" onSubmit={submit}>
         <section className="workspace-panel">
           <div className="panel-heading">
             <h2>採購需求</h2>
             <span>＊ 必填</span>
           </div>
-          <div className="form-fields">
+          <fieldset className="form-fields" disabled={busy || !!saved}>
             <div className="form-field">
               <label htmlFor="service">服務類型</label>
               <input id="service" value="企業信用風險報告" readOnly />
-              <small>目前可採購的服務項目。</small>
+              <small>
+                目前為 Demo 報告，非正式徵信資料；付款可依後端設定使用 Base
+                Sepolia 測試網。
+              </small>
             </div>
             <div className="form-field">
               <label htmlFor="target">
@@ -261,12 +382,56 @@ export function NewRequest({ settings }: { settings: Settings | null }) {
               />
               <small>金額與發票資料請以上方預算及公司設定為準。</small>
             </div>
-          </div>
+            <details className="request-options">
+              <summary>付款前控制（選填）</summary>
+              <div className="form-field">
+                <label htmlFor="approval-limit">人工核准門檻（USDC）</label>
+                <input
+                  id="approval-limit"
+                  type="number"
+                  inputMode="decimal"
+                  min="0"
+                  max="1000000"
+                  step="0.000001"
+                  value={approvalLimit}
+                  onChange={(event) => setApprovalLimit(event.target.value)}
+                  placeholder="例如：0.03"
+                />
+                <small>
+                  報價超過此門檻時先暫停，確認完整報價後才付款；不會提高預算。
+                </small>
+              </div>
+              <div className="form-field">
+                <label htmlFor="expected-pay-to">限定收款地址</label>
+                <input
+                  id="expected-pay-to"
+                  value={expectedPayTo}
+                  onChange={(event) => setExpectedPayTo(event.target.value)}
+                  autoComplete="off"
+                  spellCheck={false}
+                  pattern="0x[0-9a-fA-F]{40}"
+                  maxLength={42}
+                  placeholder="0x…（留空沿用登錄地址）"
+                />
+                <small>
+                  必須與供應商登錄及即時報價一致。不會修改供應商地址。
+                </small>
+              </div>
+            </details>
+          </fieldset>
           <div className="form-footer">
             <span>建立申請不會立即付款。</span>
             <button
               className="workspace-button primary"
-              disabled={busy || !settings?.company || !settings?.policy}
+              disabled={
+                busy ||
+                !!saved ||
+                !storageReady ||
+                frozen ||
+                !settings?.company ||
+                !settings?.policy ||
+                !settings.services.length
+              }
             >
               {busy ? "建立中…" : "建立申請"}
             </button>
@@ -427,19 +592,74 @@ export function PurchaseList({ invoices = false }: { invoices?: boolean }) {
 
 export function PolicyPage({
   resource,
+  controls,
 }: {
   resource: ReturnType<typeof useResource<Settings>>;
+  controls: ReturnType<typeof useResource<Control>>;
 }) {
   const policy = resource.data?.policy;
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
+  const pending = useRef(false);
+  async function freeze() {
+    if (!controls.data || pending.current) return;
+    pending.current = true;
+    setBusy(true);
+    setError(null);
+    try {
+      await api<Control>("/controls", {
+        method: "PUT",
+        body: JSON.stringify({ paymentsFrozen: !controls.data.paymentsFrozen }),
+      });
+    } catch (cause) {
+      setError(cause instanceof Error ? cause : new Error("付款控制未能更新"));
+    } finally {
+      controls.refresh();
+      pending.current = false;
+      setBusy(false);
+    }
+  }
   return (
     <>
       <PageHeading
         title="採購政策"
         description="查閱現行採購限制與核准供應商。歷史案件保留付款當時的政策快照。"
       >
-        <span className="readonly-label">唯讀</span>
+        <span className="readonly-label">政策唯讀 · 付款控制可操作</span>
       </PageHeading>
       <ErrorMessage error={resource.error} retry={resource.refresh} />
+      <section className="workspace-panel">
+        <div className="panel-heading">
+          <h2>新付款控制</h2>
+          <button className="text-button" onClick={controls.refresh}>
+            重新讀取
+          </button>
+        </div>
+        <div className="control-content">
+          <ErrorMessage error={error} retry={controls.refresh} />
+          <p role="status">
+            {controls.data
+              ? controls.data.paymentsFrozen
+                ? "目前已凍結新付款。"
+                : "目前允許依政策送出新付款。"
+              : "正在讀取付款控制…"}
+          </p>
+          <p>
+            凍結會阻止新申請與尚未放行的付款；已取得送出許可的在途付款不會撤銷。設定保存在後端，重新整理仍有效。
+          </p>
+          <button
+            className="workspace-button"
+            disabled={busy || !controls.data || !!controls.error}
+            onClick={() => void freeze()}
+          >
+            {busy
+              ? "更新中…"
+              : controls.data?.paymentsFrozen
+                ? "解除新付款凍結"
+                : "凍結新付款"}
+          </button>
+        </div>
+      </section>
       {policy ? (
         <>
           <section className="workspace-panel">
@@ -504,7 +724,7 @@ export function PolicyPage({
             </div>
           </section>
           <p className="page-footnote">
-            本頁提供查閱；目前未提供政策編輯或人工審批操作。
+            政策僅供查閱；人工核准在待處理案件中進行，且不會覆蓋公司政策限制。
           </p>
         </>
       ) : (

@@ -71,7 +71,10 @@ async function request(url: string, init: RequestInit = {}): Promise<HttpResult>
 }
 
 async function coreRequest(path: string, init: RequestInit = {}): Promise<HttpResult> {
-  return request(`${CORE_API_URL}/api/v1${path}`, init);
+  return request(`${CORE_API_URL}/api/v1${path}`, { ...init, headers: {
+    ...Object.fromEntries(new Headers(init.headers)),
+    ...(process.env["API_ACCESS_TOKEN"] ? { "x-mello-api-key": process.env["API_ACCESS_TOKEN"] } : {}),
+  } });
 }
 
 function expectSuccess(result: HttpResult, label: string): void {

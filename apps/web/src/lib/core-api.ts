@@ -94,6 +94,7 @@ export interface Purchase {
   } | null;
   reconciliation: { status: string } | null;
   anchors?: { kind: string; status: string; transactionHash: string | null }[];
+  explorerLinks?: { payment: string | null; anchor: string | null };
   availableActions?: {
     retryInvoice: boolean;
     retryAnchor: boolean;
@@ -106,38 +107,83 @@ export interface Task extends TaskRow {
   error: { code: string; message: string } | null;
   purchase: Purchase | null;
   timeline: AuditEvent[];
+  control: {
+    requestKey: string;
+    approvalLimitAtomic: string | null;
+    expectedPayTo: string | null;
+    pendingTerms: {
+      serviceId: string;
+      sellerId: string;
+      amountAtomic: string;
+      payTo: string;
+      network: string;
+      token: string;
+    } | null;
+    approvedAt: string | null;
+  } | null;
 }
+
+export interface Control {
+  paymentsFrozen: boolean;
+  updatedAt: string | null;
+}
+
+export const SESSION_EXPIRED = "mello:session-expired";
 
 export class ApiError extends Error {
   constructor(
     message: string,
     public code: string,
     public requestId?: string,
+    public status?: number,
   ) {
     super(message);
   }
 }
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
+  return requestJson<T>(`/api/v1${path}`, init);
+}
+
+export async function requestJson<T>(
+  path: string,
+  init?: RequestInit,
+): Promise<T> {
   let response: Response;
   try {
-    response = await fetch(`/api/v1${path}`, {
+    response = await fetch(path, {
       ...init,
       cache: "no-store",
+      credentials: "same-origin",
+      signal: init?.signal ?? AbortSignal.timeout(35_000),
       headers: { "Content-Type": "application/json", ...init?.headers },
     });
   } catch (error) {
     if (error instanceof Error && error.name === "AbortError") throw error;
     throw new ApiError(
-      "無法連線，請稍後重新整理。若剛送出申請，請先至採購清單確認是否已建立。",
+      "無法連線，請重新讀取既有案件。建立申請時若回應遺失，請用原請求找回，不要另建付款。",
       "CONNECTION_ERROR",
     );
   }
   const body = await response.json().catch(() => null);
+  if (
+    response.status === 401 &&
+    path.startsWith("/api/v1/") &&
+    !init?.signal?.aborted &&
+    typeof window !== "undefined"
+  ) {
+    window.dispatchEvent(new Event(SESSION_EXPIRED));
+  }
   if (!response.ok)
     throw new ApiError(
       body?.error?.message || "服務暫時無法連線，請確認後端已啟動後再試。",
       body?.error?.code || "SERVICE_UNAVAILABLE",
       body?.error?.requestId,
+      response.status,
+    );
+  if (body === null)
+    throw new ApiError(
+      "後端回應格式異常，請重新讀取狀態。",
+      "INVALID_RESPONSE",
     );
   return body as T;
 }

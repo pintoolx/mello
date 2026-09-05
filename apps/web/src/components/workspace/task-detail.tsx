@@ -29,17 +29,24 @@ const tabs = [
   { key: "activity", label: "活動紀錄" },
 ];
 
-export function TaskDetail({ taskId }: { taskId: string }) {
+export function TaskDetail({
+  taskId,
+  frozen,
+}: {
+  taskId: string;
+  frozen: boolean;
+}) {
   const search = useSearchParams();
   const [tab, setTab] = useState(
     search.get("tab") === "records" ? "records" : "request",
   );
-  const [submitted, setSubmitted] = useState(false);
   const resource = useResource<Task>(`/tasks/${taskId}`, true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   const pending = useRef(false);
   const task = resource.data;
+  const actionBusy =
+    busy || resource.awaitingAction || running(task?.status ?? "");
   async function action(path: string) {
     if (pending.current) return;
     pending.current = true;
@@ -47,7 +54,6 @@ export function TaskDetail({ taskId }: { taskId: string }) {
     setError(null);
     try {
       await api(path, { method: "POST" });
-      setSubmitted(true);
       if (task) resource.refreshAfterAction(task.updatedAt);
     } catch (cause) {
       setError(cause instanceof Error ? cause : new Error("操作未完成"));
@@ -86,10 +92,10 @@ export function TaskDetail({ taskId }: { taskId: string }) {
         {task.status === "CREATED" && (
           <button
             className="workspace-button primary"
-            disabled={busy || submitted}
+            disabled={actionBusy || frozen}
             onClick={() => void action(`/tasks/${taskId}/run`)}
           >
-            {busy || submitted ? "送出中…" : "送出採購"}
+            {actionBusy ? "送出中…" : "送出採購"}
           </button>
         )}
         <button className="workspace-button" onClick={resource.refresh}>
@@ -97,6 +103,55 @@ export function TaskDetail({ taskId }: { taskId: string }) {
         </button>
       </PageHeading>
       <ErrorMessage error={error || resource.error} retry={resource.refresh} />
+      {task.status === "ACTION_REQUIRED" &&
+        task.error?.code === "APPROVAL_REQUIRED" &&
+        task.control?.pendingTerms && (
+          <section className="workspace-panel" aria-labelledby="approval-title">
+            <div className="panel-heading">
+              <h2 id="approval-title">確認付款報價</h2>
+              <Badge status="ACTION_REQUIRED" />
+            </div>
+            <div className="control-content">
+              <p>
+                報價超過人工核准門檻 {money(task.control.approvalLimitAtomic)}{" "}
+                USDC，目前尚未建立付款。核准只適用本次完整條款；報價變更會重新檢查。
+              </p>
+              <dl className="policy-fields">
+                <Field label="供應商服務" mono>
+                  {task.control.pendingTerms.serviceId}
+                </Field>
+                <Field label="待核准金額">
+                  {money(task.control.pendingTerms.amountAtomic)} USDC
+                </Field>
+                <Field label="收款地址" mono>
+                  {task.control.pendingTerms.payTo}
+                </Field>
+                <Field label="付款網路" mono>
+                  {task.control.pendingTerms.network}
+                </Field>
+                <Field label="代幣合約" mono>
+                  {task.control.pendingTerms.token}
+                </Field>
+              </dl>
+              <button
+                className="workspace-button primary"
+                disabled={actionBusy || frozen}
+                onClick={() => void action(`/tasks/${taskId}/approve`)}
+              >
+                {actionBusy ? "等待處理…" : "核准此報價並繼續"}
+              </button>
+            </div>
+          </section>
+        )}
+      {task.error?.code === "PAYMENTS_FROZEN" && !task.purchase && !frozen && (
+        <button
+          className="workspace-button"
+          disabled={actionBusy}
+          onClick={() => void action(`/tasks/${taskId}/run`)}
+        >
+          繼續原申請
+        </button>
+      )}
       {task.error && (
         <div className="case-alert" role="status">
           <strong>
@@ -115,7 +170,7 @@ export function TaskDetail({ taskId }: { taskId: string }) {
           </p>
         </div>
       )}
-      {running(task.status) && (
+      {(running(task.status) || resource.awaitingAction) && (
         <div className="processing-note" role="status">
           系統正在處理此案件，狀態將自動更新。你可以離開此頁，稍後從清單繼續查看。
         </div>
@@ -337,7 +392,7 @@ export function TaskDetail({ taskId }: { taskId: string }) {
             (task.purchase ? (
               <PurchaseRecords
                 purchase={task.purchase}
-                busy={busy}
+                busy={actionBusy}
                 action={action}
               />
             ) : (
@@ -386,7 +441,10 @@ function PurchaseRecords({
               {purchase.paymentAuthorization?.paymentId}
             </Field>
             <Field label="交易識別碼" mono>
-              {purchase.payment?.transactionHash}
+              <Transaction
+                hash={purchase.payment?.transactionHash}
+                explorer={purchase.explorerLinks?.payment}
+              />
             </Field>
             <Field label="結算模式">
               {purchase.modes?.payment === "mock"
@@ -420,6 +478,10 @@ function PurchaseRecords({
                 </pre>
               </details>
             )}
+          <p className="sandbox-note">
+            目前信用報告為 Demo
+            資料，非正式徵信評等。鏈上紀錄僅驗證留存雜湊，不證明報告內容真實。
+          </p>
         </section>
         <section>
           <div className="evidence-title">
@@ -474,7 +536,10 @@ function PurchaseRecords({
             <span>{anchor.kind}</span>
             <Badge status={anchor.status} />
             <span className="record-id">
-              {anchor.transactionHash ?? "尚無交易"}
+              <Transaction
+                hash={anchor.transactionHash}
+                explorer={purchase.explorerLinks?.anchor}
+              />
             </span>
           </div>
         ))}
@@ -492,10 +557,45 @@ function PurchaseRecords({
         )}
       </details>
       {purchase.availableActions?.reconcilePayment && (
-        <p className="case-alert">
-          付款結果尚待確認。請由管理員核對既有交易，勿重新付款。
-        </p>
+        <div className="case-alert">
+          <p>付款結果尚待確認。此操作只核對已有交易，不重新付款。</p>
+          <button
+            className="workspace-button"
+            disabled={busy}
+            onClick={() =>
+              void action(`/purchases/${purchase.purchaseId}/reconcile-payment`)
+            }
+          >
+            核對既有付款
+          </button>
+        </div>
       )}
     </>
+  );
+}
+
+function Transaction({
+  hash,
+  explorer,
+}: {
+  hash?: string | null;
+  explorer?: string | null;
+}) {
+  if (!hash) return <>尚無交易</>;
+  let href: string | null = null;
+  try {
+    if (explorer && /^0x[\da-fA-F]{64}$/.test(hash)) {
+      const url = new URL(`${explorer.replace(/\/$/, "")}/tx/${hash}`);
+      if (url.protocol === "https:") href = url.href;
+    }
+  } catch {
+    /* Invalid explorer metadata must never hide the actual hash. */
+  }
+  return href ? (
+    <a href={href} target="_blank" rel="noopener noreferrer">
+      {hash} ↗
+    </a>
+  ) : (
+    <>{hash}</>
   );
 }

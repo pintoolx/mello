@@ -42,6 +42,8 @@ export async function requestJson(
 ): Promise<{ status: number; body: unknown }> {
   const response = await fetch(`${apiBaseUrl()}${path}`, {
     ...init,
+    headers: { ...Object.fromEntries(new Headers(init.headers)),
+      ...(process.env["API_ACCESS_TOKEN"] ? { "x-mello-api-key": process.env["API_ACCESS_TOKEN"] } : {}) },
     signal: AbortSignal.timeout(15_000),
   });
   const contentType = response.headers.get("content-type") ?? "";

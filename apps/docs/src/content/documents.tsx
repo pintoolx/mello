@@ -267,17 +267,14 @@ export const documents: Document[] = [
       },
       {
         id: "limits",
-        title: "尚未提供的控制",
+        title: "付款前控制與去重邊界",
         content: (
           <>
             <p>
-              目前未提供「超過 0.08 USDC 轉人工核准」、全域凍結新付款，以及跨
-              Agent
-              新建案件的同標的業務去重。不可把前端禁用按鈕視為這些控制已生效。
+              新增申請時可指定人工核准門檻，超過門檻會在案件中顯示待核准金額、服務與收款地址。採購政策頁可凍結新付款；設定由後端持久化並強制執行，已取得放行許可的在途付款不撤銷。
             </p>
             <p>
-              已存在的是同一 task 重跑的冪等性：完成的案件再次執行不新增
-              settlement。這與另一個 Agent 新建 task 是不同的保證。
+              同一 task 重跑不新增 settlement；建立回應遺失時以相同 request key 找回原申請。不同 Agent 只有共用同一業務 key 才能去重；相似內容配上新 key 仍是新案件，沒有同標的語意去重。
             </p>
           </>
         ),
@@ -380,7 +377,7 @@ export const documents: Document[] = [
               <span>PostgreSQL · 採購與稽核證據</span>
             </div>
             <p>
-              Next.js 工作區透過同源的 API 轉送呼叫 Core API。Core API
+              Next.js 工作區透過驗證 session 的同源 API 代理呼叫 Core API。Core API
               由持續運行的 Node.js 服務與 durable worker 處理任務，資料保存在
               PostgreSQL。
             </p>
@@ -479,14 +476,12 @@ export const documents: Document[] = [
         content: (
           <>
             <p>
-              前端轉送不提供登入與權限保護，也不應自動替匿名請求附加管理
-              Token。錢包金鑰及 Provider 憑證只能存在後端環境。
+              工作區先以存取碼登入，使用 HttpOnly、SameSite=Strict session。API 代理拒絕匿名與跨來源寫入，僅允許列出的操作；伺服器才附加 API key，核准、凍結與付款核對另附管理 Token。錢包金鑰及 Provider 憑證只存在後端，不進入瀏覽器。
             </p>
             <div className="doc-note warning">
               <strong>受控測試環境</strong>
               <p>
-                目前沒有使用者登入及多租戶隔離。不可把可支出真實資金的 API
-                當作公開匿名服務部署。testnet 驗證也必須明確配置與管理資金。
+                存取碼使用者共用單公司操作員權限，尚無多租戶、SSO 或正式財務職務分權。不可把可支出資金的 API 當作公開匿名服務部署；testnet 驗證也必須明確配置與管理資金。
               </p>
             </div>
           </>
@@ -510,6 +505,8 @@ export const documents: Document[] = [
             <li>付款、服務交付、測試發票、對帳及稽核紀錄查閱。</li>
             <li>依後端狀態提供發票／歸檔重試。</li>
             <li>重新整理恢復同一案件，同一 task 的冪等重跑。</li>
+            <li>存取碼登入、付款前人工核准、持久化的新付款凍結。</li>
+            <li>保存 request key，建立回應遺失時找回原申請，不自動另建付款。</li>
           </ul>
         ),
       },
@@ -536,8 +533,8 @@ export const documents: Document[] = [
           <ul>
             <li>正式電子發票及財政部有效開立。</li>
             <li>跨 Agent、跨 task 同服務同標的的業務去重。</li>
-            <li>人工審批門檻與全域付款凍結。</li>
-            <li>使用者認證、多租戶及正式財務權限管理。</li>
+            <li>正式信用資料與徵信評等；現有信用報告仍為 Demo。</li>
+            <li>SSO、多租戶及正式財務職務分權管理。</li>
             <li>
               Marketplace、Seller 上架後台、自架 facilitator、主網資金保管。
             </li>

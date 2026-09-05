@@ -1,22 +1,22 @@
 # Next.js 前端串接交接
 
-本文件對照現有 `apps/web/src/components/mello-console.tsx` 與已移入 `apps/api` 的實作。此次交付不修改前端；表中「建議／待補」不是已存在的 endpoint 或功能。
+本文件對照現有 `apps/web/src/components/mello-console.tsx` 與 `apps/api`。前端已接線，沿用原有視覺；資料、狀態及證據改由後端提供。
 
 ## 整合方式
 
-保留現有 Next.js 官網、品牌、版面與操作台，將 console 的 timer/local state 改為 API 驅動。建議分出前端的 `lib/api-client.ts`（HTTP／錯誤）、`lib/console-view-model.ts`（API → 畫面）與 task polling hook，讓 `mello-console.tsx` 保持呈現與互動職責。
+保留 main 的新版採購工作區、品牌與獨立 `apps/docs`；根路徑直接進入 `/app`，不恢復舊官網或六格 Demo 控制台。`lib/core-api.ts` 統一 HTTP／錯誤與 JSON DTO，`lib/task-input.ts` 管理待確認請求的格式與精確金額轉換；`components/workspace/session.tsx` 管理登入，`shared.tsx` 提供可取消的案件輪詢，`pages.tsx` 與 `task-detail.tsx` 對應新版操作頁面。
 
 ```text
 Next.js Client Component
-  → 同 origin /api/v1/*（建議新增 Next.js rewrite）
+  → 同 origin /api/v1/*（session 驗證 + allowlist Route Handler BFF）
   → apps/api 的 Express /api/v1/*
   → PostgreSQL + durable worker + Seller A/B
   → x402 facilitator / Base Sepolia（啟用時）
 ```
 
-API 是持續運行的 Node.js service，與 Next.js 各自部署。Next.js rewrite 只處理路由，不提供登入／權限。若後續改用 Route Handler BFF 代加 admin token，必須先驗證使用者 session 與操作權限；不能為匿名 proxy 自動附加 admin token。
+API 是持續運行的 Node.js service，與 Next.js 各自部署。BFF 先驗證 12 小時 HttpOnly、SameSite=Strict 的 HMAC session；production cookie 加 Secure。寫入須同 origin。通過後才補後端 API key，核准／凍結／設定／reconciliation 另補 admin token。所有登入使用者目前共享單一 demo 操作員權限，不是正式多租戶或職務分權系統。
 
-建議在 Next.js server env 設定 `CORE_API_URL=http://127.0.0.1:4000`，將 `/api/v1/:path*` rewrite 到同一路徑的 API。這是待串接時才新增的設定。瀏覽器直連 API 亦可，但需對齊 `WEB_ORIGIN`；目前 API 預設只接受 `http://localhost:3000`。不要讓 frontend import API 的 Prisma、wallet 或 `src/shared` barrel；若日後需要共用型別，可抽出只含 JSON DTO 的 `packages/api-contracts`。
+Next.js server env 設定 `CORE_API_URL`、`API_ACCESS_TOKEN`、`DEMO_ADMIN_TOKEN`、`MELLO_ACCESS_CODE`、`MELLO_SESSION_SECRET` 與 `WEB_PUBLIC_URL`，見 `apps/web/.env.example`。不使用 `NEXT_PUBLIC_*` 秘密，不讓 frontend import Prisma、wallet 或 API 的 `src/shared` barrel。Railway 上 BFF 使用私有網路連 API。
 
 ## Endpoint 對照
 
@@ -25,10 +25,13 @@ API 是持續運行的 Node.js service，與 Next.js 各自部署。Next.js rewr
 | 畫面／操作 | Endpoint | 請求／回應重點 |
 | --- | --- | --- |
 | 初始載入公司、政策、供應商 | `GET /settings` | `{ company, policy, sellers, services }` |
+| 工作區登入／登出 | `/api/session` 的 GET / POST / DELETE（不加 v1） | POST `{ code }`；登入失效回登入畫面，保留當前案件 URL |
 | 儀表板／採購紀錄摘要 | `GET /dashboard/summary` | `counts, taskStatuses, purchaseStatuses, settledAmountAtomic, recentPurchases, modes` |
 | 系統狀態 | `GET /demo/health` | `status, checkedAt, modes, checks`；即使 degraded 也可回 HTTP 200 |
-| 開立採購任務 | `POST /tasks` | body 只有 `{ prompt: string }`；201 → `{ taskId, status: "CREATED" }` |
-| 執行任務 | `POST /tasks/:taskId/run` | 無 body；202 → `{ taskId, status: "PARSING" }`，實際是排入 worker |
+| 開立採購任務 | `POST /tasks` | `{ prompt, requestKey?, approvalLimitAtomic?, expectedPayTo? }`；新任務 201，相同 key 與內容回 200 同一 task、`deduplicated=true`；不同內容回 409 |
+| 人工核准 | `POST /tasks/:taskId/approve` | admin；只允許 APPROVAL_REQUIRED，核准綁定完整報價，202 後重新輪詢 |
+| 新付款凍結 | `GET /controls`、`PUT /controls` | PUT 為 admin、body `{ paymentsFrozen: boolean }`；PostgreSQL 持久化 |
+| 執行任務 | `POST /tasks/:taskId/run` | 無 body；一般 202 排入 worker，已完成案件冪等重跑可回 200，不新增付款 |
 | 任務輪詢／回復頁面 | `GET /tasks/:taskId` | `status, intent, candidates, decisionSummary, error, purchaseId, purchase, timeline` |
 | 任務列表 | `GET /tasks?limit=20&offset=0` | `{ items, total, limit, offset }` |
 | 採購詳情與證據 | `GET /purchases/:id` | `payment, delivery, invoice, reconciliation, anchors, availableActions, modes` |
@@ -44,15 +47,15 @@ API 是持續運行的 Node.js service，與 Next.js 各自部署。Next.js rewr
 | 編輯 policy | `PUT /policies/active` | admin；完整 policy input，見下表 |
 | 清除 demo database | `POST /demo/reset` | admin；只接受 local DB，worker 有 active jobs 時拒絕 |
 
-Invoice retry、anchor retry、payment reconciliation 亦提供 `/tasks/:taskId/...` 的別名。Admin 操作要帶 `x-demo-admin-token`。無效 token 回 401；不存在資源回 404；重複執行中／狀態不允許操作通常回 409。
+Invoice retry、anchor retry、payment reconciliation 亦提供 `/tasks/:taskId/...` 的別名。設定 API_ACCESS_TOKEN 後所有 API 需要 `x-mello-api-key`；production 強制要求設定。Admin 操作另需 `x-demo-admin-token`。Browser 由 BFF 補齊，不接觸這些秘密。無效 token 回 401；不存在資源回 404；重複執行中／狀態不允許通常回 409。BFF 不開放 demo reset。
 
 ## 畫面欄位對照
 
 | 現有畫面資料 | API 來源 | 串接注意事項 |
 | --- | --- | --- |
-| 公司名稱、統編、成本中心 | `settings.company.legalName / businessId / defaultCostCenter` | 現有硬編碼「青葉電子」與 backend seed「Mello Demo Corp.」不同，需先由公司設定更新 |
-| 申請人「林佳穎」、截止時間「17:00」 | 尚無對應欄位 | 顯示為展示內容或後續新增 actor／deadline model |
-| 採購需求 | `task.prompt` | `POST /tasks` 只接受 prompt，3–2000 字；沒有獨立 budget/company/payTo 欄位 |
+| 公司名稱、統編、成本中心 | `settings.company.legalName / businessId / defaultCostCenter` | 使用真實 profile；歷史採購／發票保留原始證據 |
+| 申請人、截止時間 | 尚無對應欄位 | 不顯示虛構人名或截止時間；需另建 actor／deadline model |
+| 採購需求 | `task.prompt` | prompt 3–2000 字；其他可選控制欄位見 POST /tasks |
 | 案件編號 | `task.taskId`／`purchase.purchaseId` | 可縮短顯示；不要虛構完整業務流水號 |
 | 預算上限 | `task.intent.maxAmount.atomic / display` | 傳入時要反映在 prompt；獨立 budget state 不會自動影響 API |
 | 採購目標 | `task.intent.targetCompanyName` | Demo parser 只支援有限句型，見下文 |
@@ -98,9 +101,9 @@ Policy 寫入 body：
 
 `version` 由後端管理。以上皆為 atomic-unit 整數字串；不要用 JavaScript 浮點數處理帳務加總。回傳的資料庫 bigint、block number 與 audit sequence 也使用字串。
 
-## 六步進度與終止狀態
+## 案件狀態與終止狀態
 
-API 沒有單一 `stage` 欄位。建議由 task status 推導進度位置，同時獨立呈現各證據狀態。
+API 沒有單一 `stage` 欄位。新版案件詳情呈現狀態標記與申請／供應商政策／付款對帳／活動紀錄分頁；下表為業務階段對照，不代表 UI 有六格進度面板。
 
 | UI 步驟 | 對應 task status | 呈現規則 |
 | --- | --- | --- |
@@ -118,31 +121,31 @@ API 沒有單一 `stage` 欄位。建議由 task status 推導進度位置，同
 
 Anchor 是 `NOT_STARTED / PENDING / SUBMITTED / CONFIRMED / FAILED_RETRYABLE`。完成條件不要只看 reconciliation=MATCHED，仍須以 task/purchase 的最終狀態判定。
 
-## 已存在的特殊操作與缺口
+## 特殊操作與安全邊界
 
-| 現有 Demo 操作 | 後端目前能力 | 建議下一步 |
+ | 現有 Demo 操作 | 後端目前能力 | 建議下一步 |
 | --- | --- | --- |
-| 「測試 0.03 預算」 | 有 | 用明確包含 0.03 USDC 的 prompt 建新 task；測試 API 真正拒絕，不只改畫面 budget |
-| 「模擬財務 Agent 重複下單」 | 僅同一 task 的冪等重跑 | 對既有 task 再 POST run；已完成回 200 同一 task，不建立新 settlement。另開新 task 不屬於此保證；跨 Agent 業務去重需要新規格 |
-| 「凍結所有新付款」 | 沒有全域 freeze endpoint／資料模型 | 先定義權限、待執行／已授權付款邊界，再做 server-side gate；不能只禁用按鈕就宣稱已凍結 |
-| 「測試 payTo 不符」 | Policy/live terms 已有比對 | 使用隔離的測試 seller fixture；目前沒有面向 UI 的注入 endpoint。錯誤可能出現在 validation 或 policy，需讀取實際 error/reason |
-| 「超過 0.08 先問我」 | 沒有人工審批 API 或 approval state | demo parser 將每個明確 USDC 金額視為上限並取最小值，即 0.08；不會進入等待核准 |
-| 「重置 Demo」 | 有破壞本地 demo data 的 admin endpoint | 區分「清空這個畫面」與「清除後端所有 demo records」；資料庫重置不是 setState |
+| 新申請的預算欄位 | 後端政策檢查 | 0.03 USDC 低預算會真實拒絕，不只改畫面 budget |
+| 「找回原申請」 | 持久化 request key 去重 | 相同 key 必須代表同一業務請求；新 key 的相似 prompt 仍是新採購，不宣稱語意去重 |
+| 政策頁「凍結新付款」 | 全域 server-side gate | 凍結拒絕新任務及尚未放行的付款；已取得 payment-release permit 的在途付款仍可能結算 |
+| 付款前控制「限定收款地址」 | expectedPayTo 控制與 live terms 比對 | 不符時在 purchase／簽章前拒絕；不變更 seller registry |
+| 付款前控制「人工核准門檻」 | 人工審批 API 與持久化條款 hash | 超過門檻回 ACTION_REQUIRED / APPROVAL_REQUIRED，purchase=null；案件中確認報價後核准；變更條款須再核准 |
+| 返回採購清單 | 保留既有案件 | 新版沒有 Demo 重置按鈕；遠端 BFF 不代理破壞性 reset |
 | 發票失敗後重試 | 有專用 invoice retry | 只在 `availableActions.retryInvoice` 為 true 時顯示；重試後輪詢，不重送整個 task |
 | settlement 回應不確定 | 僅已有 tx hash 時可 reconcile | 看 `availableActions.reconcilePayment`；沒有 hash 的狀態需保留處理，不是可直接重新付款 |
 
 ### Prompt 與展示公司的差異
 
-現有長 prompt 寫「晨光貿易」、「青葉電子 53887711」、「超過 0.08 先問我」，目前 demo parser 不會完整理解所有資訊。它從 company profile 讀 buyer 統編及成本中心，從明確金額取最小預算；公司目標若未符合有限句型會回 `Example Co.` 並標記 `intent.usedDemoDefaultTarget=true`。
+Demo parser 從 company profile 讀 buyer 統編及成本中心，支援現有「出貨給晨光貿易」句型；無法識別時回 `Example Co.` 並標記 `intent.usedDemoDefaultTarget=true`。明確「超過 X USDC 先問我／需要核准」由 controls 解析為審批門檻，不再錯當採購預算。其他模糊或衝突金額仍保守取最小值。
 
-下一步建議先使用明確句型，例如「幫我買一份 晨光貿易 的信用報告，預算 0.08 USDC，要開統編發票。」公司名稱／統編由 Settings 讀取與更新，統編需要通過八碼 checksum。若產品需要保留自然語言的審批門檻、申請人與截止時間，應擴充 request schema／workflow，而不是只改前端文案。
+建議明確句型：「幫我買一份 晨光貿易 的信用報告，預算 0.10 USDC，要開統編發票。超過 0.03 USDC 先問我。」可走人工核准 demo。統編需要八碼 checksum；任意自然語言不是保證可理解的設定介面。
 
 ### 輪詢與錯誤
 
 1. `POST /tasks` 保存 taskId。
 2. `POST /tasks/:taskId/run` 收到 202 後，以約 0.5–1 秒間隔 `GET /tasks/:taskId`。
 3. 終態為 `COMPLETED / REJECTED / ACTION_REQUIRED / FAILED`。頁面卸載取消輪詢，reload 時以保存的 taskId 回復查詢。
-4. Network timeout 不代表伺服器未執行；先 GET 既有 task 狀態。POST create 的回應若遺失，目前沒有 client request idempotency key，需從 task list 找回。
+4. Network timeout 不代表伺服器未執行；先 GET 既有 task。前端在 localStorage 保存 pending request key，POST create 回應遺失時以相同 key 恢復，不產生第二筆付款。
 5. 專用 retry 接受 202 後重新輪詢。收到 409 先刷新狀態，不盲目重送。
 
 統一錯誤 envelope：
@@ -161,6 +164,6 @@ Anchor 是 `NOT_STARTED / PENDING / SUBMITTED / CONFIRMED / FAILED_RETRYABLE`。
 
 HTTP error 不一定代表 task 已失敗；task 的持久化失敗另見 `task.error`。前端應保留 requestId 供除錯；不得顯示、記錄或傳遞 API secret、wallet private key、完整付款簽章。
 
-## 前端接線建議順序
+## 後續討論
 
-先接 Settings／health 的讀取與真實公司／supplier 資料，再接 create → run → polling → payment/delivery/invoice/anchor 證據，接著是 invoice/anchor retry 與實際事件列表。確認這些狀態後，再討論 freeze、跨 Agent 去重與人工審批三項產品擴充。合約不要求前端連錢包，現行簽章與 gas 操作由後端負責。
+以上流程已接線；後續產品化需補多租戶與職務分權、SSO／持久化登入限流、正式發票 adapter，以及跨 Agent 共用業務 key 的協議。合約保留根目錄 contracts/，不要求前端連錢包，簽章與 gas 操作由後端負責。

@@ -14,26 +14,27 @@ import {
   statusLabel,
   type AuditEvent,
 } from "../../lib/core-api";
+import { taskPolling, type PendingRevision } from "../../lib/task-polling";
 
 export function useResource<T>(path: string, poll = false) {
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState<Error | null>(null);
   const [loading, setLoading] = useState(true);
   const [version, setVersion] = useState(0);
-  const awaitingRevision = useRef<{
-    updatedAt: string;
-    deadline: number;
-  } | null>(null);
+  const [awaitingAction, setAwaitingAction] = useState(false);
+  const awaitingRevision = useRef<PendingRevision | null>(null);
   const refresh = useCallback(() => setVersion((value) => value + 1), []);
   const refreshAfterAction = useCallback(
     (updatedAt: string) => {
       awaitingRevision.current = { updatedAt, deadline: Date.now() + 30000 };
+      setAwaitingAction(true);
       refresh();
     },
     [refresh],
   );
   useEffect(() => {
     const controller = new AbortController();
+    const startedAt = Date.now();
     let timer: ReturnType<typeof setTimeout> | undefined;
     const fetchData = async () => {
       try {
@@ -41,24 +42,21 @@ export function useResource<T>(path: string, poll = false) {
         if (controller.signal.aborted) return;
         setData(result);
         setError(null);
-        const status = (result as { status?: string }).status;
-        const waiting = awaitingRevision.current;
-        const waitingForWorker =
-          waiting !== null &&
-          (result as { updatedAt?: string }).updatedAt === waiting.updatedAt &&
-          Date.now() < waiting.deadline;
-        if (!waitingForWorker) awaitingRevision.current = null;
-        if (
-          poll &&
-          (waitingForWorker ||
-            !["COMPLETED", "REJECTED", "ACTION_REQUIRED", "FAILED"].includes(
-              status ?? "",
-            ))
-        )
-          timer = setTimeout(fetchData, 1200);
+        const next = taskPolling(
+          result as { status?: string; updatedAt?: string },
+          awaitingRevision.current,
+          startedAt,
+        );
+        if (!next.awaitingWorker) {
+          awaitingRevision.current = null;
+          setAwaitingAction(false);
+        }
+        if (poll && next.shouldPoll) timer = setTimeout(fetchData, 1200);
       } catch (cause) {
-        if (!controller.signal.aborted)
+        if (!controller.signal.aborted) {
           setError(cause instanceof Error ? cause : new Error("讀取失敗"));
+          setAwaitingAction(false);
+        }
       } finally {
         if (!controller.signal.aborted) setLoading(false);
       }
@@ -69,7 +67,11 @@ export function useResource<T>(path: string, poll = false) {
       if (timer) clearTimeout(timer);
     };
   }, [path, version, poll]);
-  return { data, error, loading, refresh, refreshAfterAction };
+  useEffect(() => {
+    window.addEventListener("focus", refresh);
+    return () => window.removeEventListener("focus", refresh);
+  }, [refresh]);
+  return { data, error, loading, awaitingAction, refresh, refreshAfterAction };
 }
 
 export function PageHeading({
@@ -233,6 +235,10 @@ const eventLabels: Record<string, string> = {
   INVOICE_ISSUED: "已取得發票",
   RECONCILIATION_MATCHED: "三方對帳完成",
   TASK_COMPLETED: "案件已完成",
+  APPROVAL_REQUESTED: "報價需要人工核准",
+  PURCHASE_APPROVED: "報價已由操作員核准",
+  PAYMENTS_FROZEN: "已凍結新付款",
+  PAYMENTS_UNFROZEN: "已解除新付款凍結",
 };
 export function Events({ events }: { events: AuditEvent[] }) {
   if (!events.length)

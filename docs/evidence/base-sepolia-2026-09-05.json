@@ -1,0 +1,74 @@
+{
+  "verifiedAt": "2026-09-05T07:01:55.136Z",
+  "chainId": 84532,
+  "registry": "0x260758a7e8f4a998dc7aa8794938e72a2a4c6d4a",
+  "ok": true,
+  "proofs": [
+    {
+      "purchaseId": "e4c775a1-f541-4f1b-b9bf-745e00e79edb",
+      "taskId": "ed2c2fa9-6f4a-488b-9606-0b931b139515",
+      "settlementHash": "0x4281cdb417678152d75d23c62d9c61e25f8a2775512cf2df3c9a887551683b63",
+      "settlementBlock": "46411616",
+      "usdcAtomic": "50000",
+      "matchingTransferCount": 1,
+      "registryStatus": "FINALIZED",
+      "authorizationHashMatches": true,
+      "anchors": [
+        {
+          "kind": "AUTHORIZE",
+          "transactionHash": "0x525128970707352d49ef44d95c966ec01fc54cc24b5e12ca50d61dae67a6e22c",
+          "blockNumber": "46411615"
+        },
+        {
+          "kind": "FINALIZE",
+          "transactionHash": "0x6ca3449b958f9e3a983d2f90e2bb20311b8b189a2bb9a534fc14f56f7460484d",
+          "blockNumber": "46411618"
+        }
+      ]
+    },
+    {
+      "purchaseId": "a237503e-862a-47d2-b48e-e380e3eb498c",
+      "taskId": "71ac9e64-3d96-4906-a7d0-2b3138c55508",
+      "settlementHash": "0x9f546be8637f893ac819a57fcc2314a793cc7ba7efd20679851bafa4ffc43237",
+      "settlementBlock": "46411627",
+      "usdcAtomic": "50000",
+      "matchingTransferCount": 1,
+      "registryStatus": "FINALIZED",
+      "authorizationHashMatches": true,
+      "anchors": [
+        {
+          "kind": "AUTHORIZE",
+          "transactionHash": "0xa9be9e3e568b54587bcc56f0f840996cef78e6da4faba71589b62796a95703ef",
+          "blockNumber": "46411627"
+        },
+        {
+          "kind": "FINALIZE",
+          "transactionHash": "0xbf2158a55ce6037c5f5f28c431caf466c07fb554d06cb722c8a031a15e677b82",
+          "blockNumber": "46411629"
+        }
+      ]
+    },
+    {
+      "purchaseId": "ab4f3272-319a-44a4-96a4-e7acf667f948",
+      "taskId": "0b7bd376-d1c5-4b8f-a11e-39083cd386e4",
+      "settlementHash": "0xe808f00736a1e3158b2ddccb42799ee7e02b1630be4a030360f6e8f2cc5ba5ee",
+      "settlementBlock": "46411631",
+      "usdcAtomic": "50000",
+      "matchingTransferCount": 1,
+      "registryStatus": "FINALIZED",
+      "authorizationHashMatches": true,
+      "anchors": [
+        {
+          "kind": "AUTHORIZE",
+          "transactionHash": "0x0ee88b1e54d34ec684ebe903256c9df61d72d31c457f488ba2e18a61e509af1e",
+          "blockNumber": "46411630"
+        },
+        {
+          "kind": "FINALIZE",
+          "transactionHash": "0xa63d3d52b37a0c05fee9b8963c299d5b81a84ca996717110bcf495c3204be0a8",
+          "blockNumber": "46411633"
+        }
+      ]
+    }
+  ]
+}

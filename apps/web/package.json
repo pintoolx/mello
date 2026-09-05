@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "next typegen && tsc --noEmit",
+    "test": "node --experimental-strip-types --test scripts/task-input.test.mjs scripts/task-polling.test.mjs",
     "qa:visual": "node scripts/visual-qa.mjs"
   },
   "dependencies": {

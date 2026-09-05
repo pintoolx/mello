@@ -15,6 +15,7 @@ import type {
 } from "./http/contracts.js";
 import { PrismaCoreApiRepository } from "./http/prisma-core-api-repository.js";
 import { logger as defaultLogger } from "./logger.js";
+import { ProcurementControls } from "./modules/controls/procurement-controls.js";
 import {
   MockInvoiceAdapter,
   type InvoiceAdapter,
@@ -141,7 +142,9 @@ export function createCoreApiDependencies(
   const paymentProvider = overrides.paymentProvider ?? createPaymentProvider(config);
   const invoiceAdapter = overrides.invoiceAdapter ?? createInvoiceAdapter(config);
   const anchorClient = overrides.anchorClient ?? createAnchorClient(config);
+  const controls = new ProcurementControls(prisma);
   const workflow = new PurchaseWorkflow({
+    controls,
     prisma,
     config,
     agent,
@@ -179,6 +182,7 @@ export function createCoreApiDependencies(
     );
 
   return {
+    controls,
     config,
     repository,
     workflow,

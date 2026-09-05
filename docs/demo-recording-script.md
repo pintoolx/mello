@@ -14,6 +14,7 @@ Mello 對應 Enterprise AI Agents、Secure Transaction Authorization 與 Risk-aw
 
 - 依 README 設定資料庫、migrate、seed，啟動 API、兩個 Seller 與前端。`npm run dev` 單獨只會啟動前端。
 - 使用 1440 × 900 或 1920 × 1080，瀏覽器縮放 100%，關閉通知。
+- 使用管理員私下提供的存取碼登入；不要錄到存取碼、環境變數或錢包金鑰。
 - 開啟 `/app/policy` 確認公司、單筆限額、供應商與收款地址。資料由後端讀取；預設 seed 名稱是 Mello Demo Corp. 與 Mello Data Labs A/B，不要在旁白替它們改名。
 - 確認頁面「運作環境」。若是 mock，旁白稱為模擬結算；只有真正使用 testnet 且取得鏈上證據時才稱 testnet 付款。發票一律保留 SANDBOX / TEST INVOICE 提示。
 - 錄影不需要重置資料庫。保留已有案件，另建這次要操作的申請即可。
@@ -41,6 +42,8 @@ Mello 對應 Enterprise AI Agents、Secure Transaction Authorization 與 Risk-aw
 
 - 若發票失敗且出現「重試取得發票」，只重試發票，不另建採購。已有付款不能當成未付款。
 - 若停在處理中或顯示連線錯誤，重新整理同一案件；不要為了畫面好看重複下單。
-- 同一案件重試的冪等性已存在；跨 Agent 新建案件的業務去重尚未實作，影片不可宣稱會攔截。
-- 目前沒有 0.08 USDC 人工核准流程、全域凍結或使用者權限管理；不要把這些列成已完成操作。
+- 同一案件重試與相同 request key 去重已存在；跨 Agent 必須共用業務 key，相似 prompt 配新 key 不會被當成重複採購。
+- 若要展示人工核准，在「付款前控制」填 0.03 USDC，送出後先停在報價確認，再按「核准此報價並繼續」。0.05 USDC 報價不會觸發 0.08 USDC 門檻。
+- 「採購政策」可凍結新付款並重新整理確認持久化；在途付款不撤銷。共用存取碼不是正式使用者職務分權。
 - Mock 發票不是正式電子發票，不可稱為已向財政部有效開立。
+- 信用報告仍為 Demo。即使付款與雜湊存證在 Base Sepolia 成功，也不能稱為真實徵信資料。

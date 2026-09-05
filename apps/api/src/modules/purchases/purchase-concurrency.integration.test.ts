@@ -304,7 +304,9 @@ describe.skipIf(!RUN_INTEGRATION_TESTS).sequential(
       expect(await currentReservedAtomic(fixture.buyerProfileId)).toBe("50000");
 
       const purchase = await prisma.purchase.findFirstOrThrow({
-        where: { buyerProfileId: fixture.buyerProfileId },
+        // The single-company database can contain completed browser demos.
+        // Restrict mutations to this test's unique service, never an older purchase.
+        where: { buyerProfileId: fixture.buyerProfileId, serviceId: fixture.serviceId },
         include: { payment: true },
       });
       expect(purchase.payment?.status).toBe("NOT_STARTED");
@@ -376,7 +378,7 @@ describe.skipIf(!RUN_INTEGRATION_TESTS).sequential(
       expect((await Promise.all([first, second])).filter(Boolean)).toHaveLength(1);
 
       const purchase = await prisma.purchase.findFirstOrThrow({
-        where: { buyerProfileId: fixture.buyerProfileId },
+        where: { buyerProfileId: fixture.buyerProfileId, serviceId: fixture.serviceId },
         include: { payment: true },
       });
       await prisma.purchase.update({

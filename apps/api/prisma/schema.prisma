@@ -187,6 +187,7 @@ model Service {
 }
 
 model Task {
+  control            TaskControl?
   id                 String     @id @default(uuid()) @db.Uuid
   prompt             String
   intent             Json?
@@ -203,6 +204,26 @@ model Task {
   purchase           Purchase?
 
   @@index([status, createdAt])
+}
+
+// Console request identity and approval evidence are separate from payment state.
+model TaskControl {
+  taskId                  String   @id @db.Uuid
+  requestKey              String   @unique @db.VarChar(128)
+  requestHash             String   @db.VarChar(66)
+  approvalLimitAtomic     String?  @db.VarChar(78)
+  expectedPayTo           String?  @db.VarChar(42)
+  pendingTerms            Json?
+  approvedTermsHash       String?  @db.VarChar(66)
+  approvedAt              DateTime? @db.Timestamptz(3)
+  paymentReleaseGrantedAt DateTime? @db.Timestamptz(3)
+  task                    Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+}
+
+model PaymentControl {
+  id             String   @id @db.VarChar(32)
+  paymentsFrozen Boolean  @default(false)
+  updatedAt      DateTime @updatedAt @db.Timestamptz(3)
 }
 
 model Purchase {

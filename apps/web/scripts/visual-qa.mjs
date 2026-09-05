@@ -8,6 +8,7 @@ const docsUrl = process.env.MELLO_QA_DOCS_URL ?? "http://localhost:4174";
 const chromeBin = process.env.CHROME_BIN ?? "google-chrome";
 const outputDir = path.join(tmpdir(), "mello-visual-qa");
 const debugPort = 9333;
+let sessionCookie = "";
 
 await mkdir(outputDir, { recursive: true });
 
@@ -228,7 +229,7 @@ async function runViewport(cdp, name, width, height) {
 }
 
 async function request(route, init) {
-  const response = await fetch(`${baseUrl}/api/v1${route}`, init);
+  const response = await fetch(`${baseUrl}/api/v1${route}`, { ...init, headers: { "content-type": "application/json", origin: new URL(baseUrl).origin, cookie: sessionCookie, ...init?.headers } });
   if (!response.ok) throw new Error(`API ${route}: ${response.status}`);
   return response.json();
 }
@@ -250,6 +251,10 @@ async function fill(cdp, id, value) {
 
 let cdp;
 try {
+  if (!process.env.MELLO_ACCESS_CODE) throw new Error("Set the private MELLO_ACCESS_CODE in the QA process environment.");
+  const login = await fetch(`${baseUrl}/api/session`, { method: "POST", headers: { "content-type": "application/json", origin: new URL(baseUrl).origin }, body: JSON.stringify({ code: process.env.MELLO_ACCESS_CODE }) });
+  if (!login.ok) throw new Error(`QA login failed: ${login.status}`);
+  sessionCookie = login.headers.getSetCookie().map((value) => value.split(";")[0]).join("; ");
   const health = await request("/demo/health");
   if (health.modes.payment !== "mock" || health.modes.anchor !== "mock" || health.modes.agent !== "demo" || health.modes.invoice !== "mock") throw new Error("Visual QA creates persisted tasks and is restricted to an isolated mock/demo API. Refusing to spend funds or call a paid model.");
   const page = await getJson(`http://127.0.0.1:${debugPort}/json/new?about:blank`, { method: "PUT" });
@@ -257,6 +262,10 @@ try {
   await cdp.ready();
   await cdp.send("Page.enable");
   await cdp.send("Runtime.enable");
+  for (const cookie of sessionCookie.split("; ")) {
+    const separator = cookie.indexOf("=");
+    await cdp.send("Network.setCookie", { name: cookie.slice(0, separator), value: cookie.slice(separator + 1), url: baseUrl, path: "/", httpOnly: true, sameSite: "Strict", secure: baseUrl.startsWith("https:") });
+  }
 
   const report = {
     generatedAt: new Date().toISOString(),

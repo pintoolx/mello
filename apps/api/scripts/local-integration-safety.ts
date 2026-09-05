@@ -125,6 +125,8 @@ async function fetchHealth(
   try {
     response = await fetchImplementation(new URL(path, baseUrl), {
       method: "GET",
+      ...(path === "/api/v1/demo/health" && process.env["API_ACCESS_TOKEN"]
+        ? { headers: { "x-mello-api-key": process.env["API_ACCESS_TOKEN"] } } : {}),
       redirect: "error",
       signal: AbortSignal.timeout(15_000),
     });

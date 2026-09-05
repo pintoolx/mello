@@ -2,6 +2,9 @@ import { sanitizedErrorForLog } from "@mello/shared";
 import pino, { type DestinationStream, type Logger, type LoggerOptions } from "pino";
 
 export const LOGGER_REDACT_PATHS = [
+  "req.headers['x-mello-api-key']",
+  "API_ACCESS_TOKEN",
+  "*.API_ACCESS_TOKEN",
   "req.headers.authorization",
   "req.headers.x-demo-admin-token",
   "req.headers['payment-signature']",

@@ -1,0 +1,17 @@
+.git
+node_modules
+**/node_modules
+**/.next
+**/.env*
+**/.ENV*
+.env*
+.ENV*
+**/src/db/generated
+contracts/out
+contracts/cache
+contracts/broadcast
+**/__pycache__
+**/*.tsbuildinfo
+.railway
+**/test-results
+**/playwright-report

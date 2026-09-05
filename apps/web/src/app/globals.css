@@ -248,7 +248,7 @@ video:focus-visible {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 38px;
+  min-height: 40px;
   border: 1px solid #bac4c4;
   background: #fbfcf8;
   color: #455a68;
@@ -278,6 +278,45 @@ video:focus-visible {
   border: 1px solid #c6ceca;
   margin-bottom: 22px;
   min-width: 0;
+}
+.session-screen {
+  display: grid;
+  place-items: center;
+  padding: 24px 16px;
+}
+.session-panel {
+  width: min(100%, 480px);
+}
+.session-panel h1 {
+  color: var(--navy);
+  font-size: 24px;
+  margin: 0 0 8px;
+}
+.session-form {
+  display: grid;
+  gap: 20px;
+}
+.session-error {
+  min-height: 0;
+  padding: 16px;
+}
+.pending-request {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.request-options > summary {
+  cursor: pointer;
+  min-height: 40px;
+}
+.request-options[open] {
+  display: grid;
+  gap: 20px;
+}
+.control-content {
+  padding: 20px;
+}
+.control-content .case-alert {
+  margin-top: 16px;
 }
 .panel-heading {
   display: flex;

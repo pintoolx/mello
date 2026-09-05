@@ -110,6 +110,9 @@ export type PolicyDecision = z.infer<typeof PolicyDecisionSchema>;
 
 export const CreateTaskSchema = z.object({
   prompt: z.string().trim().min(3).max(2_000),
+  requestKey: z.string().regex(/^[a-zA-Z0-9_-]{16,128}$/).optional(),
+  approvalLimitAtomic: AtomicAmountSchema.max(78).optional(),
+  expectedPayTo: EvmAddressSchema.optional(),
 });
 
 export const Erc3009AuthorizationRecordSchema = z.object({

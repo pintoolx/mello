@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { MelloLogo } from "./mello-logo";
-import { useResource, Notice } from "./workspace/shared";
+import { useResource, Notice, ErrorMessage } from "./workspace/shared";
+import { SessionGate, useSession } from "./workspace/session";
 import {
   RequestList,
   NewRequest,
@@ -12,7 +13,7 @@ import {
   AuditPage,
 } from "./workspace/pages";
 import { TaskDetail } from "./workspace/task-detail";
-import type { Modes, Settings } from "../lib/core-api";
+import type { Control, Modes, Settings } from "../lib/core-api";
 
 const navigation = [
   { href: "/app", title: "採購申請", icon: "document" },
@@ -46,8 +47,18 @@ function NavIcon({ name }: { name: string }) {
 }
 
 export function MelloConsole() {
+  return (
+    <SessionGate>
+      <Workspace />
+    </SessionGate>
+  );
+}
+
+function Workspace() {
   const pathname = usePathname();
+  const session = useSession();
   const settings = useResource<Settings>("/settings");
+  const controls = useResource<Control>("/controls");
   const health = useResource<{ modes: Modes }>("/demo/health");
   const section =
     navigation.find(
@@ -59,15 +70,21 @@ export function MelloConsole() {
       : null;
   const page =
     pathname === "/app/tasks/new" ? (
-      <NewRequest settings={settings.data} />
+      <NewRequest
+        settings={settings.data}
+        frozen={controls.data?.paymentsFrozen ?? true}
+      />
     ) : taskId ? (
-      <TaskDetail taskId={taskId} />
+      <TaskDetail
+        taskId={taskId}
+        frozen={controls.data?.paymentsFrozen ?? true}
+      />
     ) : pathname === "/app/payments" ? (
       <PurchaseList />
     ) : pathname === "/app/invoices" ? (
       <PurchaseList invoices />
     ) : pathname === "/app/policy" ? (
-      <PolicyPage resource={settings} />
+      <PolicyPage resource={settings} controls={controls} />
     ) : pathname === "/app/audit" ? (
       <AuditPage />
     ) : pathname === "/app" ? (
@@ -81,7 +98,11 @@ export function MelloConsole() {
   return (
     <div className="workspace">
       <header className="workspace-header">
-        <Link href="/app" aria-label="Mello 採購工作區" className="workspace-brand">
+        <Link
+          href="/app"
+          aria-label="Mello 採購工作區"
+          className="workspace-brand"
+        >
           <MelloLogo light={false} />
         </Link>
         <span className="workspace-product">採購與付款管理</span>
@@ -96,6 +117,13 @@ export function MelloConsole() {
             </small>
           </span>
         </div>
+        <button
+          className="workspace-button"
+          disabled={session.busy}
+          onClick={session.logout}
+        >
+          {session.busy ? "登出中…" : "登出"}
+        </button>
       </header>
       <div className="workspace-layout">
         <aside className="workspace-sidebar">
@@ -146,6 +174,30 @@ export function MelloConsole() {
             )}
           </div>
           <div className="workspace-content" key={pathname}>
+            <ErrorMessage error={settings.error} retry={settings.refresh} />
+            <ErrorMessage error={controls.error} retry={controls.refresh} />
+            {settings.data &&
+              (!settings.data.company ||
+                !settings.data.policy ||
+                !settings.data.services.length) && (
+                <Notice title="後端尚未完成初始化">
+                  請管理員初始化公司、政策與供應商後重新讀取。
+                  <p>
+                    <button
+                      className="workspace-button"
+                      onClick={settings.refresh}
+                    >
+                      重新讀取設定
+                    </button>
+                  </p>
+                </Notice>
+              )}
+            {controls.data?.paymentsFrozen && (
+              <div className="case-alert" role="status">
+                新付款已凍結；已放行的在途付款仍可能結算。
+                <Link href="/app/policy">查看付款控制 →</Link>
+              </div>
+            )}
             {page}
           </div>
           <footer className="workspace-footer">

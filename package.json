@@ -20,7 +20,7 @@
     "qa:visual": "npm run qa:visual --workspace @mello/web",
     "dev:api": "npm run dev --workspace @mello/api",
     "dev:backend": "npm run dev:stack --workspace @mello/api",
-    "test": "npm run test --workspace @mello/api",
+    "test": "npm run test --workspaces --if-present",
     "test:integration": "npm run test:integration --workspace @mello/api",
     "db:migrate": "npm run db:migrate --workspace @mello/api",
     "seed": "npm run seed --workspace @mello/api",

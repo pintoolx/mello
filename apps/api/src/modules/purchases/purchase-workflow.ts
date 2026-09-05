@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import type { ProcurementControls } from "../controls/procurement-controls.js";
 import {
   AnchorSubmissionPersistenceError,
   AnchorTransactionRevertedError,
@@ -63,6 +64,7 @@ import {
 const MIN_RETRY_CLAIM_LEASE_MS = 10 * 60_000;
 
 export interface PurchaseWorkflowDependencies {
+  controls?: ProcurementControls;
   prisma: PrismaClient;
   config: AppConfig;
   agent: ProcurementAgent;
@@ -839,6 +841,8 @@ export class PurchaseWorkflow {
     );
     if (!selectedService) throw new Error("Selected registry service disappeared");
 
+    if (this.dependencies.controls && !await this.dependencies.controls.assess(taskId, selectedService, requestId)) return;
+
     const purchaseId = randomUUID();
     const paymentId = generatePaymentId();
     const buyerAddress = await paymentProvider.getAddress();
@@ -1379,8 +1383,9 @@ export class PurchaseWorkflow {
     let paidRequestReleased = false;
     try {
       settlement = await input.prepared.submit({
-        onBeforePaidRequest: () =>
-          this.appendPaymentLifecycleEvent({
+        onBeforePaidRequest: async () => {
+          await this.dependencies.controls?.claimPaymentRelease(input.taskId, input.purchaseId, input.requestId);
+          await this.appendPaymentLifecycleEvent({
             taskId: input.taskId,
             purchaseId: input.purchaseId,
             paymentId: input.paymentId,
@@ -1393,7 +1398,8 @@ export class PurchaseWorkflow {
               boundary: "BEFORE_SIGNED_PAID_REQUEST_RELEASE",
               paidRequestReleased: false,
             },
-          }),
+          });
+        },
         onPaidRequestReleased: async () => {
           paidRequestReleased = true;
           await this.recordPaidRequestReleased({
