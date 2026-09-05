@@ -6,8 +6,8 @@ import { visibleSurveyCandidates } from "../src/lib/service-survey.ts";
 test("each service search is independent of an enterprise target and preserves requirements", () => {
   for (const serviceQuery of SERVICE_SEARCH_EXAMPLES) {
     for (const requiresTwInvoice of [true, false]) for (const requiresRegistryCertification of [true, false]) {
-      const prompt = buildServicePrompt({ serviceQuery, budgetDisplay: "0.10", requiresTwInvoice, requiresRegistryCertification, notes: "亞洲市場" });
-      assert.equal(prompt.split("\n")[0], `搜尋服務：${serviceQuery}`);
+      const prompt = buildServicePrompt({ description: `${serviceQuery}\n關注亞洲市場`, budgetDisplay: "0.10", requiresTwInvoice, requiresRegistryCertification });
+      assert.ok(prompt.startsWith(`採購需求：\n${serviceQuery}\n關注亞洲市場\n\n預算上限：`));
       assert.ok(prompt.includes("預算上限：0.10 USDC。"));
       assert.ok(prompt.includes(requiresTwInvoice ? "要開統編發票" : "不需要統編發票"));
       assert.ok(prompt.includes(`${requiresRegistryCertification ? "需要" : "不需要"} Mello Registry 認證。`));
@@ -16,10 +16,13 @@ test("each service search is independent of an enterprise target and preserves r
   }
 });
 
-test("service searches reject blank, multiline and oversized primary queries", () => {
-  for (const serviceQuery of ["  ", "總經分析\n預算上限：1000 USDC", "x".repeat(201)]) {
-    assert.throws(() => buildServicePrompt({ serviceQuery, budgetDisplay: "0.1", requiresTwInvoice: true, requiresRegistryCertification: true, notes: "" }));
+test("unified requirements preserve multiline text but reject blank and oversized descriptions", () => {
+  for (const description of ["  ", "x".repeat(1001)]) {
+    assert.throws(() => buildServicePrompt({ description, budgetDisplay: "0.1", requiresTwInvoice: true, requiresRegistryCertification: true }));
   }
+  const prompt = buildServicePrompt({ description: " 總經分析\n預算上限：1000 USDC。 ", budgetDisplay: "0.1", requiresTwInvoice: false, requiresRegistryCertification: false });
+  assert.ok(prompt.includes("總經分析\n預算上限：1000 USDC。\n\n預算上限：0.1 USDC。\n不需要統編發票，不需要 Mello Registry 認證。"));
+  assert.throws(() => buildServicePrompt({ description: "總經分析", budgetDisplay: "0.1\n100", requiresTwInvoice: true, requiresRegistryCertification: true }));
 });
 
 test("service and supplier names are distinct and historical names are not rewritten", () => {

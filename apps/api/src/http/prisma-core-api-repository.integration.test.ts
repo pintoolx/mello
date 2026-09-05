@@ -246,6 +246,7 @@ describe.skipIf(!RUN_INTEGRATION_TESTS).sequential(
         repository,
         workflowJobs,
         workflow: {
+          discover: async () => undefined,
           run: vi.fn(async () => undefined),
           retryInvoice: vi.fn(async () => undefined),
           retryAnchor: vi.fn(async () => undefined),

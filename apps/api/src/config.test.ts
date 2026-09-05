@@ -1,9 +1,23 @@
 import { describe, expect, it } from "vitest";
 import { loadConfig } from "./config.js";
+import { readFileSync } from "node:fs";
+import { parse } from "dotenv";
 
 const DATABASE_URL = "postgresql://mello:mello@localhost:5432/mello_test";
 
 describe("Core API feature boundaries", () => {
+  it("defaults to first-attempt Demo invoice success, including the published environment template", () => {
+    expect(loadConfig({ DATABASE_URL }).MOCK_INVOICE_FAIL_ONCE).toBe(false);
+    const template = parse(readFileSync(new URL("../.env.example", import.meta.url)));
+    expect(template["MOCK_INVOICE_FAIL_ONCE"]).toBe("false");
+    expect(loadConfig({ DATABASE_URL, MOCK_INVOICE_FAIL_ONCE: template["MOCK_INVOICE_FAIL_ONCE"] }).MOCK_INVOICE_FAIL_ONCE).toBe(false);
+  });
+
+  it("retains explicitly requested invoice-recovery fault injection", () => {
+    expect(loadConfig({ DATABASE_URL, MOCK_INVOICE_FAIL_ONCE: "true" }).MOCK_INVOICE_FAIL_ONCE).toBe(true);
+    expect(loadConfig({ DATABASE_URL, MOCK_INVOICE_FAIL_ONCE: "false" }).MOCK_INVOICE_FAIL_ONCE).toBe(false);
+  });
+
   it("keeps roadmap Ethereum adapters disabled by default", () => {
     expect(loadConfig({ DATABASE_URL })).toMatchObject({
       ERC8004_IDENTITY_ENABLED: false,

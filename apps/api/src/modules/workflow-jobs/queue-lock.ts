@@ -4,6 +4,12 @@ import type { Prisma } from "@mello/db";
 // locking. Shared locks cover enqueue/claim; demo reset takes the exclusive lock.
 export const WORKFLOW_QUEUE_ADVISORY_LOCK = 557_074_766_908_245n;
 
+export async function acquireTaskDispatchLock(transaction: Prisma.TransactionClient, taskId: string): Promise<void> {
+  await transaction.$queryRaw`
+    SELECT pg_advisory_xact_lock(hashtextextended(${`mello:selection:${taskId}`}, 0)) IS NULL AS "acquired"
+  `;
+}
+
 export async function acquireWorkflowQueueSharedLock(
   transaction: Prisma.TransactionClient,
 ): Promise<void> {

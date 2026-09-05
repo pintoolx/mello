@@ -29,12 +29,13 @@ export function taskServiceTitle(intent: Intent | null | undefined): string {
 }
 
 export function buildServicePrompt(input: {
-  serviceQuery: string; budgetDisplay: string; requiresTwInvoice: boolean;
-  requiresRegistryCertification: boolean; notes: string;
+  description: string; budgetDisplay: string; requiresTwInvoice: boolean;
+  requiresRegistryCertification: boolean;
 }): string {
-  const query = input.serviceQuery.trim();
-  if (!query || query.length > 200 || /[\r\n]/u.test(query)) {
-    throw new Error("請輸入 1 至 200 字的服務需求，例如：總經分析。");
+  const description = input.description.trim();
+  if (!description || description.length > 1000) {
+    throw new Error("請輸入 1 至 1000 字的需求說明，例如：總經分析，關注亞洲市場。");
   }
-  return `搜尋服務：${query}\n預算上限：${input.budgetDisplay} USDC。\n${input.requiresTwInvoice ? "要開統編發票" : "不需要統編發票"}，${input.requiresRegistryCertification ? "需要" : "不需要"} Mello Registry 認證。${input.notes.trim() ? `\n補充需求：${input.notes.trim()}` : ""}`;
+  if (!/^\d+(?:\.\d{1,6})?$/u.test(input.budgetDisplay)) throw new Error("預算格式不正確。");
+  return `採購需求：\n${description}\n\n預算上限：${input.budgetDisplay} USDC。\n${input.requiresTwInvoice ? "要開統編發票" : "不需要統編發票"}，${input.requiresRegistryCertification ? "需要" : "不需要"} Mello Registry 認證。`;
 }

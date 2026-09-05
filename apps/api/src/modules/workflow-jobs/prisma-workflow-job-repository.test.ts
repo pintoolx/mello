@@ -27,6 +27,26 @@ function claimedJob(attempts = 2, maxAttempts = 3): ClaimedWorkflowJob {
 }
 
 describe("PrismaWorkflowJobRepository", () => {
+  it.each(["DISCOVER_TASK", "RUN_TASK"] as const)("prevents %s from overlapping any active task job kind", async (kind) => {
+    const tx = { $queryRaw: vi.fn(async () => []), task: { findUnique: vi.fn(async () => ({ status: "CREATED", purchase: null,
+      control: { selectedService: null, approvedAt: null, requirements: { requiresTwInvoice: false, requiresRegistryCertification: false } } })) },
+      workflowJob: { findFirst: vi.fn(async () => ({ id: "already-running-other-kind" })) } };
+    const repository = new PrismaWorkflowJobRepository({ $transaction: (op: (transaction: typeof tx) => Promise<unknown>) => op(tx) } as unknown as PrismaClient);
+    await expect(repository.enqueue({ kind, aggregateId: "task-id", payload: { taskId: "task-id", requestId: "request-id" } })).rejects.toMatchObject({ code: "TASK_ALREADY_RUNNING" });
+    expect(tx.workflowJob.findFirst).toHaveBeenCalledWith({ where: { aggregateId: "task-id", kind: { in: ["RUN_TASK", "DISCOVER_TASK"] },
+      status: { in: ["PENDING", "RUNNING", "FAILED_RETRYABLE"] } }, select: { id: true } });
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(2); // queue shared lock then task dispatch lock; no INSERT
+  });
+
+  it.each([
+    { purchase: { id: "purchase" } }, { control: { requirements: null } },
+    { control: { requirements: { requiresTwInvoice: false, requiresRegistryCertification: false }, selectedService: { serviceId: "chosen" } } },
+  ])("refuses discovery without an unselected survey boundary: %j", async (change) => {
+    const tx = { $queryRaw: vi.fn(async () => []), task: { findUnique: vi.fn(async () => ({ status: "CREATED", purchase: null, ...change })) } };
+    const repository = new PrismaWorkflowJobRepository({ $transaction: (op: (transaction: typeof tx) => Promise<unknown>) => op(tx) } as unknown as PrismaClient);
+    await expect(repository.enqueue({ kind: "DISCOVER_TASK", aggregateId: "task-id", payload: { taskId: "task-id", requestId: "request-id" } })).rejects.toMatchObject({ code: "TASK_ALREADY_RUNNING" });
+  });
+
   it("rejects a queue request above the three-attempt network ceiling", async () => {
     const repository = new PrismaWorkflowJobRepository({} as PrismaClient);
 

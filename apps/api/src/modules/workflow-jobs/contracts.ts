@@ -1,6 +1,7 @@
 import type { Prisma } from "@mello/db";
 
 export const WORKFLOW_JOB_KINDS = [
+  "DISCOVER_TASK",
   "RUN_TASK",
   "RETRY_INVOICE",
   "RETRY_ANCHOR",

@@ -18,7 +18,7 @@ function job(
   attempts = 1,
 ): ClaimedWorkflowJob {
   const aggregateId =
-    kind === "RUN_TASK"
+    kind === "RUN_TASK" || kind === "DISCOVER_TASK"
       ? "00000000-0000-4000-8000-000000000101"
       : "00000000-0000-4000-8000-000000000102";
   return {
@@ -28,7 +28,7 @@ function job(
     payload: {
       requestId: "request-job-1",
       taskId: "00000000-0000-4000-8000-000000000101",
-      ...(kind === "RUN_TASK" ? {} : { purchaseId: aggregateId }),
+      ...(kind === "RUN_TASK" || kind === "DISCOVER_TASK" ? {} : { purchaseId: aggregateId }),
     },
     attempts,
     maxAttempts: 3,
@@ -60,6 +60,7 @@ function store(claimed: ClaimedWorkflowJob | null): WorkflowJobStore {
 
 function workflow(): WorkflowOperations {
   return {
+    discover: vi.fn(async () => undefined),
     run: vi.fn(async () => undefined),
     retryInvoice: vi.fn(async () => undefined),
     retryAnchor: vi.fn(async () => undefined),
@@ -107,6 +108,26 @@ function worker(
 }
 
 describe("WorkflowJobWorker", () => {
+  it("dispatches discovery only to the generation-bound read-only workflow, never run", async () => {
+    const claimed = job("DISCOVER_TASK");
+    const runtime = worker(claimed);
+    await expect(runtime.instance.runOnce()).resolves.toBe(true);
+    expect(runtime.operations.discover).toHaveBeenCalledExactlyOnceWith(claimed.aggregateId, claimed.payload.requestId, claimed.id);
+    expect(runtime.operations.run).not.toHaveBeenCalled();
+    expect(runtime.operations.retryInvoice).not.toHaveBeenCalled();
+    expect(runtime.operations.retryAnchor).not.toHaveBeenCalled();
+    expect(runtime.workflowStore.markSucceeded).toHaveBeenCalledOnce();
+  });
+
+  it("binds discovery final errors to their exact durable job generation", async () => {
+    const claimed = job("DISCOVER_TASK");
+    const operations = workflow();
+    vi.mocked(operations.discover).mockRejectedValue(new Error("catalog unavailable"));
+    const runtime = worker(claimed, operations);
+    await runtime.instance.runOnce();
+    expect(runtime.recordFinalFailure).toHaveBeenCalledWith(expect.objectContaining({ operation: "DISCOVER_TASK", jobId: claimed.id, taskId: claimed.aggregateId }));
+    expect(runtime.operations.run).not.toHaveBeenCalled();
+  });
   it.each([
     ["RUN_TASK", "run"],
     ["RETRY_INVOICE", "retryInvoice"],

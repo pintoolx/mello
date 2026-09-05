@@ -48,6 +48,7 @@ export class MockInvoiceAdapter implements InvoiceAdapter {
   private readonly failedPurchases = new Set<string>();
   private readonly issuedReferences = new Set<string>();
 
+  /** Normal Demo issues immediately; true is reserved for explicit fault-injection tests. */
   constructor(private readonly failOnce = false) {}
 
   async issue(input: InvoiceIssueInput): Promise<InvoiceIssueResult> {

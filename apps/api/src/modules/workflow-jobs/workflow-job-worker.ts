@@ -249,6 +249,8 @@ export class WorkflowJobWorker implements WorkflowJobPoller {
 
   private dispatch(job: ClaimedWorkflowJob): Promise<void> {
     switch (job.kind) {
+      case "DISCOVER_TASK":
+        return this.dependencies.workflow.discover(job.aggregateId, job.payload.requestId, job.id);
       case "RUN_TASK":
         return this.dependencies.workflow.run(job.aggregateId, job.payload.requestId);
       case "RETRY_INVOICE":
@@ -276,6 +278,7 @@ export class WorkflowJobWorker implements WorkflowJobPoller {
     try {
       await this.dependencies.recordFinalFailure({
         operation: job.kind,
+        ...(job.kind === "DISCOVER_TASK" ? { jobId: job.id } : {}),
         ...(job.payload.taskId ? { taskId: job.payload.taskId } : {}),
         ...(job.payload.purchaseId ? { purchaseId: job.payload.purchaseId } : {}),
         requestId: job.payload.requestId,

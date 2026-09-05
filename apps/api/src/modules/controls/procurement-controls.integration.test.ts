@@ -1,8 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { prisma } from "@mello/db";
 import { BASE_SEPOLIA_USDC, MELLO_NETWORK, type ServiceRecord } from "@mello/shared";
-import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { ProcurementControls } from "./procurement-controls.js";
+import { PrismaWorkflowJobRepository } from "../workflow-jobs/prisma-workflow-job-repository.js";
 
 const controls = new ProcurementControls(prisma);
 const taskIds = new Set<string>();
@@ -22,6 +23,7 @@ describe.skipIf(process.env["RUN_INTEGRATION_TESTS"] !== "true").sequential("con
   beforeEach(async () => { await controls.setFrozen(false); });
   afterAll(async () => {
     await controls.setFrozen(false);
+    await prisma.workflowJob.deleteMany({ where: { aggregateId: { in: [...taskIds] } } });
     await prisma.auditEvent.deleteMany({ where: { taskId: { in: [...taskIds] } } });
     await prisma.task.deleteMany({ where: { id: { in: [...taskIds] } } });
     await prisma.$disconnect();
@@ -34,6 +36,36 @@ describe.skipIf(process.env["RUN_INTEGRATION_TESTS"] !== "true").sequential("con
     expect(new Set(results.map(result => result.id)).size).toBe(1);
     expect(results.filter(result => !result.deduplicated)).toHaveLength(1);
     await expect(controls.createTask({ ...input, prompt: "不同的信用報告，預算 0.10 USDC" })).rejects.toMatchObject({ code: "IDEMPOTENCY_CONFLICT" });
+  });
+
+  it("atomically creates one task/control/discovery across concurrent retries and never requeues on response recovery", async () => {
+    const input = { requestKey: randomUUID(), prompt: "搜尋服務：加密市場資訊", requirements: { requiresTwInvoice: false, requiresRegistryCertification: false } };
+    const queue = new PrismaWorkflowJobRepository(prisma);
+    const dispatch = vi.fn((tx: Parameters<PrismaWorkflowJobRepository["enqueue"]>[1], taskId: string) => queue.enqueue({
+      kind: "DISCOVER_TASK", aggregateId: taskId, payload: { taskId, requestId: input.requestKey },
+    }, tx));
+    const results = await Promise.all(Array.from({ length: 8 }, () => controls.createTask(input, dispatch, input.requestKey)));
+    results.forEach((result) => taskIds.add(result.id));
+    expect(new Set(results.map((result) => result.id)).size).toBe(1);
+    expect(results.filter((result) => result.discoveryQueued)).toHaveLength(1);
+    expect(dispatch).toHaveBeenCalledOnce();
+    const id = results[0]!.id;
+    const jobs = await prisma.workflowJob.findMany({ where: { aggregateId: id } });
+    expect(jobs).toHaveLength(1);
+    expect(jobs[0]).toMatchObject({ kind: "DISCOVER_TASK", status: "PENDING" });
+    expect(await prisma.taskControl.findUnique({ where: { taskId: id } })).toMatchObject({ discoveryJobId: jobs[0]!.id });
+    await prisma.task.update({ where: { id }, data: { status: "WAITING_SELECTION" } });
+    expect(await controls.createTask(input, dispatch)).toMatchObject({ id, deduplicated: true, discoveryQueued: false, status: "WAITING_SELECTION" });
+    expect(dispatch).toHaveBeenCalledOnce();
+    expect(await prisma.purchase.count({ where: { taskId: id } })).toBe(0);
+  });
+
+  it("rolls task and control back when automatic durable discovery enqueue fails", async () => {
+    const requestKey = randomUUID();
+    await expect(controls.createTask({ requestKey, prompt: "搜尋服務：期貨分析",
+      requirements: { requiresTwInvoice: false, requiresRegistryCertification: false } },
+    async () => { throw new Error("queue unavailable"); })).rejects.toThrow("queue unavailable");
+    expect(await prisma.taskControl.findUnique({ where: { requestKey } })).toBeNull();
   });
 
   it("pauses before payment, binds approval to exact terms, and requires a fresh approval after a quote change", async () => {

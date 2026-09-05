@@ -77,6 +77,7 @@ const EnvironmentSchema = z
       .transform((value) => value === "true"),
     INVOICE_PROVIDER: z.enum(["mock", "ecpay_stage"]).default("mock"),
     DEMO_TWD_PER_USDC: z.string().regex(/^\d+(?:\.\d+)?$/).default("32.0"),
+    // Opt-in recovery-test fault injection, never part of the normal Demo flow.
     MOCK_INVOICE_FAIL_ONCE: z
       .enum(["true", "false"])
       .default("false")

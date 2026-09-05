@@ -101,7 +101,7 @@ describe.sequential("service-first market workflow (isolated PostgreSQL, synthet
     });
     const paymentProvider = new MockPaymentProvider(undefined, () => new Date(), transport);
     const prepare = vi.spyOn(paymentProvider, "prepare");
-    const invoiceAdapter = new MockInvoiceAdapter(false);
+    const invoiceAdapter = new MockInvoiceAdapter();
     const issue = vi.spyOn(invoiceAdapter, "issue");
     const dependencies = createCoreApiDependencies({ prisma, agent: new ProcurementAgent({ mode: "demo" }),
       config: loadConfig({ DATABASE_URL: process.env["DATABASE_URL"], SERVICE_DISCOVERY_MODE: "bazaar", PAYMENT_MODE: "mock",
@@ -111,15 +111,19 @@ describe.sequential("service-first market workflow (isolated PostgreSQL, synthet
       logger: { error: vi.fn(), info: vi.fn(), warn: vi.fn(), debug: vi.fn() } as never,
     });
     const app = createApp(dependencies);
+    expect(dependencies.config.MOCK_INVOICE_FAIL_ONCE).toBe(false);
     const post = (path: string) => request(app).post(`/api/v1${path}`).set("x-mello-api-key", API_KEY);
     const get = (path: string) => request(app).get(`/api/v1${path}`).set("x-mello-api-key", API_KEY);
     const created = await post("/tasks").send({
-      prompt: `搜尋服務：${offering.displayName}\n預算：0.1 USDC\n${offering.supportsTwInvoice ? "需要統編發票" : "不需要發票"}`,
+      prompt: `採購需求：\n供內部研究使用。\n需要${offering.displayName}與主要風險摘要。\n\n預算上限：0.1 USDC。\n${offering.supportsTwInvoice ? "要開統編發票" : "不需要統編發票"}，不需要 Mello Registry 認證。`,
       requestKey: randomUUID(), requirements: { requiresTwInvoice: offering.supportsTwInvoice, requiresRegistryCertification: false },
     }).expect(201);
     const taskId = String(created.body.taskId);
     taskIds.push(taskId);
-    await post(`/tasks/${taskId}/discover`).expect(202);
+    expect(created.body).toMatchObject({ status: "CREATED", discoveryQueued: true });
+    expect(await prisma.workflowJob.count({ where: { aggregateId: taskId, kind: "DISCOVER_TASK" } })).toBe(1);
+    expect(prepare).not.toHaveBeenCalled();
+    expect(paidRequests).toBe(0);
     await dependencies.workflowJobPoller.runOnce();
     const surveyed = (await get(`/tasks/${taskId}`).expect(200)).body;
     expect(surveyed).toMatchObject({ status: "WAITING_SELECTION", purchase: null,
@@ -150,10 +154,18 @@ describe.sequential("service-first market workflow (isolated PostgreSQL, synthet
     expect(prepare).toHaveBeenCalledOnce();
     expect(paidRequests).toBe(1);
     expect(complete.purchase.invoice.status).toBe(offering.supportsTwInvoice ? "ISSUED_DEMO" : "NOT_REQUIRED");
+    expect(complete.purchase.invoice.attemptCount).toBe(offering.supportsTwInvoice ? 1 : 0);
+    expect(complete.purchase.invoice.lastError).toBeNull();
+    expect(complete.purchase.availableActions.retryInvoice).toBe(false);
     if (offering.supportsTwInvoice) {
       expect(issue).toHaveBeenCalledOnce();
       expect(issue.mock.calls[0]?.[0].itemName).toBe(offering.displayName);
+      const invoiceEvents = await prisma.auditEvent.findMany({ where: { taskId, eventType: "INVOICE_ISSUED" } });
+      expect(invoiceEvents).toHaveLength(1);
+      expect(invoiceEvents[0]?.payload).toMatchObject({ status: "ISSUED_DEMO", attempt: 1, previousStatus: "PENDING" });
     } else expect(issue).not.toHaveBeenCalled();
+    expect(await prisma.auditEvent.count({ where: { taskId, eventType: { in: ["INVOICE_FAILED_RETRYABLE", "INVOICE_FAILED_FINAL"] } } })).toBe(0);
+    expect(await prisma.workflowJob.count({ where: { aggregateId: complete.purchase.purchaseId, kind: "RETRY_INVOICE" } })).toBe(0);
     await post(`/tasks/${taskId}/select`).send({ serviceId: selected.serviceId, selectionHash: selected.selectionHash }).expect(200);
     expect(await dependencies.workflowJobPoller.runOnce()).toBe(false);
     expect(paidRequests).toBe(1);

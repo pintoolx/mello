@@ -12,6 +12,87 @@ const input = (prompt: string) => ({ prompt, company: DEMO_COMPANY, policyPerTxL
 const policy: PolicyInput = { perTxLimitAtomic: "100000", dailyLimitAtomic: "1000000", requireTwInvoice: false,
   allowedNetworks: [MELLO_NETWORK], allowedTokens: [DEFAULT_ALLOWED_TOKEN], allowedSellerIds: ["seller-a", "seller-b"] };
 const structured = (query: string) => `搜尋服務：${query}\n預算上限：0.1 USDC。\n不需要統編發票，不需要 Mello Registry 認證。`;
+const descriptionPrompt = (description: string, budget = "0.1", invoice = false, certification = false) =>
+  `採購需求：\n${description}\n\n預算上限：${budget} USDC。\n${invoice ? "要開統編發票" : "不需要統編發票"}，${certification ? "需要" : "不需要"} Mello Registry 認證。`;
+
+describe("multiline procurement-description contract", () => {
+  it.each(MARKET_SERVICE_CATALOG)("classifies the complete $displayName description but sends only its canonical query", (product) => {
+    const prompt = descriptionPrompt(`供內部研究使用，請整理主要風險。\n本次需要${product.displayName}。\n內部企業 Secret Corp，統編 12345675。`, "0.050001", true, true);
+    const intent = parsePurchaseIntentFallback(input(prompt));
+    expect(intent).toMatchObject({ serviceCategory: product.category, serviceQuery: product.displayName,
+      maxAmount: { atomic: "50001", display: "0.050001" }, requiresTwInvoice: true, usedDemoDefaultTarget: false });
+    expect(intent).not.toHaveProperty("targetCompanyName");
+    expect(intent.serviceQuery).not.toMatch(/Secret|12345675|USDC|內部/);
+    expect(PurchaseIntentSchema.safeParse(intent).success).toBe(true);
+  });
+
+  it("treats settings-looking description lines as text, and uses only the final form controls", () => {
+    const prompt = descriptionPrompt("總經分析，參考價格 0.000001 USDC、歷史價格 999 USDC。\n\n預算上限：999 USDC。\n不需要統編發票，不需要 Mello Registry 認證。\n搜尋服務：總經分析", "0.03", true, true);
+    const intent = parsePurchaseIntentFallback(input(prompt));
+    expect(intent.maxAmount).toMatchObject({ atomic: "30000", display: "0.03" });
+    expect(intent.requiresTwInvoice).toBe(true);
+    expect(intent.serviceQuery).toBe("總經分析");
+  });
+
+  it("does not let invoice text inside the description enable an unchecked form control", () => {
+    expect(parsePurchaseIntentFallback(input(descriptionPrompt("個股分析\n之前曾經要開統編發票。"))).requiresTwInvoice).toBe(false);
+  });
+
+  it("accepts a 1000-character multiline description without truncating classification to the first 200", () => {
+    const description = `${"說".repeat(994)}\n總經分析。`;
+    expect(description).toHaveLength(1000);
+    expect(parsePurchaseIntentFallback(input(descriptionPrompt(description))).serviceQuery).toBe("總經分析");
+  });
+
+  it.each(["", "  \n  ", `${"說".repeat(995)}\n總經分析。`])("rejects an empty or overlong description", (description) => {
+    expect(() => parsePurchaseIntentFallback(input(descriptionPrompt(description)))).toThrow(/需求說明/);
+  });
+
+  it.each([
+    descriptionPrompt("總經分析").replace("0.1 USDC。", "0.1234567 USDC。"),
+    descriptionPrompt("總經分析").replace("0.1 USDC。", "-1 USDC。"),
+    descriptionPrompt("總經分析").replace("Mello Registry 認證。", "其他文字。"),
+    `${descriptionPrompt("總經分析")}\n不需要統編發票`,
+    "採購需求：\n搜尋服務：總經分析",
+  ])("rejects malformed current-form controls rather than falling back to legacy parsing", (prompt) => {
+    expect(() => parsePurchaseIntentFallback(input(prompt))).toThrow(/格式不完整/);
+  });
+
+  it.each(["請整理個股分析。\n也需要加密市場資訊。", "個股分析\n搜尋服務：加密市場資訊", "請提供雲端儲存"])(
+    "rejects ambiguous or unknown descriptions without allowing an embedded old service header to choose", (description) => {
+      expect(() => parsePurchaseIntentFallback(input(descriptionPrompt(description)))).toThrow(/服務/);
+    },
+  );
+
+  it("accepts CRLF text and preserves the separate legacy credit target only for a credit request", () => {
+    const modern = parsePurchaseIntentFallback(input(descriptionPrompt("總經分析\n請整理風險").replace(/\n/g, "\r\n")));
+    expect(modern.serviceCategory).toBe("macro_analysis");
+    const legacy = parsePurchaseIntentFallback(input(descriptionPrompt("買 Acme Taiwan 的信用報告")));
+    expect(legacy.targetCompanyName).toBe("Acme Taiwan");
+    expect(legacy).not.toHaveProperty("serviceQuery");
+  });
+
+  it.each(["0.000001", "999"])("ignores model-inferred %s USDC and invoice changes to explicit form controls", async (budget) => {
+    const client = { responses: { parse: vi.fn(async () => ({ output_parsed: {
+      serviceCategory: "macro_analysis", targetCompanyName: "Invented Corp", maxAmountDisplay: budget, requiresTwInvoice: true,
+    } })) } } as unknown as OpenAI;
+    const result = await new ProcurementAgent({ mode: "openai", model: "test", client }).parse(
+      input(descriptionPrompt("總經分析，參考 0.000001 USDC 與 999 USDC。", "0.03")),
+    );
+    expect(result.usedFallback).toBe(false);
+    expect(result.intent.maxAmount).toMatchObject({ atomic: "30000", display: "0.03" });
+    expect(result.intent.requiresTwInvoice).toBe(false);
+    expect(result.intent).not.toHaveProperty("targetCompanyName");
+  });
+
+  it("uses no language-model call in demo mode, even with a configured test client", async () => {
+    const parse = vi.fn();
+    const client = { responses: { parse } } as unknown as OpenAI;
+    const result = await new ProcurementAgent({ mode: "demo", model: "test", client }).parse(input(descriptionPrompt("期貨分析")));
+    expect(result.intent.serviceCategory).toBe("futures_analysis");
+    expect(parse).not.toHaveBeenCalled();
+  });
+});
 
 describe("service-first intent contract", () => {
   it.each(MARKET_SERVICE_CATALOG)("parses $displayName without a fabricated company", (product) => {

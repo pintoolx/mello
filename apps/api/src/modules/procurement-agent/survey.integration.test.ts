@@ -59,13 +59,13 @@ async function harness(mode: "bazaar" | "local_demo" = "bazaar") {
   async function create(requirements: TaskRequirements) {
     const input = { prompt: PROMPT, requestKey: randomUUID(), requirements };
     const result = await post("/tasks").send(input).expect(201);
+    expect(result.body).toMatchObject({ status: "CREATED", discoveryQueued: true });
     const id: string = result.body.taskId;
     taskIds.push(id);
     return { id, input };
   }
   async function survey(requirements: TaskRequirements) {
     const { id, input } = await create(requirements);
-    await post(`/tasks/${id}/discover`).expect(202);
     await dependencies.workflowJobPoller.runOnce();
     const result = await get(`/tasks/${id}`).expect(200);
     expect(result.body.status).toBe("WAITING_SELECTION");
@@ -95,10 +95,47 @@ describe.sequential("survey before human-confirmed procurement", () => {
   it("persists requirements, deduplicates a lost create response, and rejects changed requirements", async () => {
     const h = await harness();
     const { id, input } = await h.create({ requiresTwInvoice: false, requiresRegistryCertification: false });
-    expect((await h.post("/tasks").send(input).expect(200)).body.taskId).toBe(id);
+    expect((await h.post("/tasks").send(input).expect(200)).body).toMatchObject({ taskId: id, discoveryQueued: false });
+    expect(await prisma.workflowJob.count({ where: { aggregateId: id, kind: "DISCOVER_TASK" } })).toBe(1);
     await h.post("/tasks").send({ ...input, requirements: { ...input.requirements, requiresTwInvoice: true } }).expect(409);
     expect((await h.get(`/tasks/${id}`).expect(200)).body.control.requirements).toEqual(input.requirements);
     await h.post(`/tasks/${id}/select`).send({ serviceId: h.service.id }).expect(400);
+    expect(h.prepare).not.toHaveBeenCalled();
+  });
+
+  it("replays a completed discovery harmlessly and preserves selection after a late discovery failure", async () => {
+    const h = await harness();
+    const { id, task } = await h.survey({ requiresTwInvoice: false, requiresRegistryCertification: false });
+    const job = await prisma.workflowJob.findFirstOrThrow({ where: { aggregateId: id, kind: "DISCOVER_TASK" } });
+    await h.dependencies.workflow.discover(id, "recovered-response", job.id);
+    await h.dependencies.repository.recordBackgroundFailure({ operation: "DISCOVER_TASK", taskId: id, jobId: job.id,
+      requestId: "late-error", error: new Error("worker lost successful response") });
+    expect((await h.get(`/tasks/${id}`).expect(200)).body).toMatchObject({ status: "WAITING_SELECTION", purchase: null });
+    const candidate = task.candidates.find((item: { serviceId: string }) => item.serviceId === h.service.id);
+    const selection = { serviceId: candidate.serviceId, selectionHash: candidate.selectionHash };
+    await h.post(`/tasks/${id}/select`).send(selection).expect(202);
+    await h.dependencies.workflow.discover(id, "late-discovery-replay", job.id);
+    await h.dependencies.repository.recordBackgroundFailure({ operation: "DISCOVER_TASK", taskId: id, jobId: job.id,
+      requestId: "late-selected-error", error: new Error("stale discovery failed") });
+    expect((await h.get(`/tasks/${id}`).expect(200)).body).toMatchObject({ status: "CREATED", purchase: null, control: { selectedService: selection } });
+    expect(h.prepare).not.toHaveBeenCalled();
+    expect(h.paidRequests()).toBe(0);
+  });
+
+  it("does not let a prior generation's final error overwrite a newly queued discovery", async () => {
+    const h = await harness();
+    const { id } = await h.create({ requiresTwInvoice: false, requiresRegistryCertification: false });
+    h.search.mockRejectedValueOnce(new Error("catalog unavailable"));
+    await h.dependencies.workflowJobPoller.runOnce();
+    const previous = await prisma.workflowJob.findFirstOrThrow({ where: { aggregateId: id, kind: "DISCOVER_TASK" } });
+    await h.post(`/tasks/${id}/discover`).expect(202);
+    const current = await prisma.taskControl.findUniqueOrThrow({ where: { taskId: id } });
+    expect(current.discoveryJobId).not.toBe(previous.id);
+    await h.dependencies.repository.recordBackgroundFailure({ operation: "DISCOVER_TASK", taskId: id, jobId: previous.id,
+      requestId: "late-prior-generation-error", error: new Error("old worker failed late") });
+    expect((await h.get(`/tasks/${id}`).expect(200)).body).toMatchObject({ status: "CREATED", purchase: null });
+    await h.dependencies.workflowJobPoller.runOnce();
+    expect((await h.get(`/tasks/${id}`).expect(200)).body).toMatchObject({ status: "WAITING_SELECTION", purchase: null });
     expect(h.prepare).not.toHaveBeenCalled();
   });
 
@@ -161,7 +198,6 @@ describe.sequential("survey before human-confirmed procurement", () => {
     const h = await harness();
     const { id } = await h.create({ requiresTwInvoice: false, requiresRegistryCertification: false });
     h.search.mockRejectedValueOnce(new Error("catalog unavailable"));
-    await h.post(`/tasks/${id}/discover`).expect(202);
     await h.dependencies.workflowJobPoller.runOnce();
     expect((await h.get(`/tasks/${id}`).expect(200)).body.status).toBe("FAILED");
     await h.post(`/tasks/${id}/discover`).expect(202);

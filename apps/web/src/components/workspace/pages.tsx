@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { buildServicePrompt, SERVICE_SEARCH_EXAMPLES, serviceName, supplierName } from "../../lib/service-catalog";
+import { buildServicePrompt, serviceName, supplierName } from "../../lib/service-catalog";
+import { ATTACHMENT_ACCEPT, MAX_ATTACHMENTS, attachmentBase64, attachmentMediaType, attachmentSize, type AttachmentMetadata } from "../../lib/task-attachments";
 import { useRouter } from "next/navigation";
 import {
   useMemo,
@@ -18,6 +19,7 @@ import {
 } from "../../lib/task-input";
 import {
   api,
+  ApiError,
   dateTime,
   money,
   running,
@@ -89,7 +91,7 @@ export function RequestList() {
               onChange={(event) => setFilter(event.target.value)}
             >
               <option value="all">全部狀態</option>
-              <option value="CREATED">待探索</option>
+              <option value="CREATED">已受理</option>
               <option value="WAITING_SELECTION">待選擇服務</option>
               <option value="processing">處理中</option>
               <option value="COMPLETED">已完成</option>
@@ -197,9 +199,15 @@ export function NewRequest({
   frozen: boolean;
 }) {
   const router = useRouter();
-  const [serviceQuery, setServiceQuery] = useState("");
+  const [description, setDescription] = useState("");
+  const [descriptionError, setDescriptionError] = useState<string | null>(null);
   const [budget, setBudget] = useState("0.10");
-  const [notes, setNotes] = useState("");
+  const [files, setFiles] = useState<{ file: File; clientFileId: string }[]>([]);
+  const [fileError, setFileError] = useState<string | null>(null);
+  const [progress, setProgress] = useState("");
+  const draftKey = useRef<string | null>(null);
+  const filePicker = useRef<HTMLInputElement | null>(null);
+  const uploaded = useRef(new Map<string, AttachmentMetadata>());
   const [requiresTwInvoice, setRequiresTwInvoice] = useState(true);
   const [requiresRegistryCertification, setRequiresRegistryCertification] = useState(true);
   const [approvalLimit, setApprovalLimit] = useState("");
@@ -231,9 +239,59 @@ export function NewRequest({
   const storageReady = snapshot !== "loading" && !stored.error;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<Error | null>(null);
+  const expiredDraft = error instanceof ApiError && error.code === "ATTACHMENT_EXPIRED";
   const submitting = useRef(false);
+  function replaceExpiredDraft() {
+    if (!saved || !expiredDraft || submitting.current) return;
+    try {
+      // This exact server error proves the atomic create rolled back. Never
+      // discard a request merely because a response timed out or went missing.
+      if (readPendingRequest(localStorage)?.requestKey !== saved.requestKey)
+        throw new Error("待確認申請已由另一分頁處理，請回採購清單確認。");
+      const original = /^採購需求：\n([\s\S]*)\n\n預算上限：(\d+(?:\.\d{1,6})?) USDC。\n/u.exec(saved.prompt);
+      if (original) { setDescription(original[1]); setBudget(original[2]); }
+      if (saved.requirements) {
+        setRequiresTwInvoice(saved.requirements.requiresTwInvoice);
+        setRequiresRegistryCertification(saved.requirements.requiresRegistryCertification);
+      }
+      setApprovalLimit(saved.approvalLimitAtomic ? money(saved.approvalLimitAtomic) : "");
+      setExpectedPayTo(saved.expectedPayTo ?? "");
+      localStorage.removeItem(PENDING_REQUEST_KEY);
+      updateFiles([]);
+      setError(null);
+      window.dispatchEvent(new Event(PENDING_CHANGED));
+    } catch (cause) {
+      setError(cause instanceof Error ? cause : new Error("原申請無法確認，請先回採購清單核對。"));
+    }
+  }
+  function updateFiles(next: typeof files) {
+    setFiles(next);
+    setFileError(null);
+    // No task has been sent at this stage. Changing files starts a new upload draft.
+    draftKey.current = null;
+    uploaded.current.clear();
+  }
+  function addFiles(selected: FileList | null) {
+    if (!selected) return;
+    try {
+      if (files.length + selected.length > MAX_ATTACHMENTS) throw new Error("最多附加 3 個文件，請先移除不需要的文件。");
+      const additions = Array.from(selected).map((file) => {
+        attachmentMediaType(file);
+        return { file, clientFileId: crypto.randomUUID() };
+      });
+      updateFiles([...files, ...additions]);
+    } catch (cause) {
+      setFileError(cause instanceof Error ? cause.message : "文件無法加入");
+    }
+  }
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!description.trim()) {
+      setDescriptionError("請先用文字說明想找的服務，文件可另外附加。");
+      document.getElementById("requirements-description")?.focus();
+      return;
+    }
+    setDescriptionError(null);
     await create();
   }
   async function create(recover = false) {
@@ -241,6 +299,7 @@ export function NewRequest({
     submitting.current = true;
     setBusy(true);
     setError(null);
+    setProgress(recover ? "找回中…" : "建立中…");
     try {
       const previous = readPendingRequest(localStorage);
       if (previous && !recover) {
@@ -262,10 +321,27 @@ export function NewRequest({
         throw new Error("人工核准門檻不可超過 1000000 USDC。");
       const prompt =
         previous?.prompt ??
-        buildServicePrompt({ serviceQuery, budgetDisplay: money(budgetAtomic), requiresTwInvoice, requiresRegistryCertification, notes });
+        buildServicePrompt({ description, budgetDisplay: money(budgetAtomic), requiresTwInvoice, requiresRegistryCertification });
+      const requestKey = previous?.requestKey ?? (draftKey.current ??= crypto.randomUUID());
+      const attachmentIds: string[] = [];
+      if (!previous) for (const [index, entry] of files.entries()) {
+        setProgress(`保存文件 ${index + 1}／${files.length}…`);
+        let attachment = uploaded.current.get(entry.clientFileId);
+        if (!attachment) {
+          attachment = await api<AttachmentMetadata>("/attachments", {
+            method: "POST",
+            body: JSON.stringify({ requestKey, clientFileId: entry.clientFileId,
+              fileName: entry.file.name, mediaType: attachmentMediaType(entry.file),
+              sizeBytes: entry.file.size, contentBase64: await attachmentBase64(entry.file) }),
+          });
+          uploaded.current.set(entry.clientFileId, attachment);
+        }
+        attachmentIds.push(attachment.id);
+      }
       const input: TaskInput = previous ?? {
         prompt,
-        requestKey: crypto.randomUUID(),
+        requestKey,
+        ...(attachmentIds.length ? { attachmentIds } : {}),
         requirements: { requiresTwInvoice, requiresRegistryCertification },
         ...(approvalLimitAtomic !== null
           ? { approvalLimitAtomic }
@@ -277,6 +353,7 @@ export function NewRequest({
       // Persist before sending. A timeout never authorizes a new request key.
       localStorage.setItem(PENDING_REQUEST_KEY, JSON.stringify(input));
       window.dispatchEvent(new Event(PENDING_CHANGED));
+      setProgress("建立申請並尋找服務…");
       const result = await api<{ taskId: string }>("/tasks", {
         method: "POST",
         body: JSON.stringify(input),
@@ -299,7 +376,7 @@ export function NewRequest({
     <>
       <PageHeading
         title="新增採購申請"
-        description="描述想找的服務，先由 Agent 搜尋，再由你選用並送出採購；不需指定企業。"
+        description="說明需求並附上相關文件，建立後自動尋找服務，再由你選用並送出採購。"
       >
         <Link href="/app" className="workspace-button">
           返回清單
@@ -319,9 +396,13 @@ export function NewRequest({
           >
             {busy ? "找回中…" : "找回原申請"}
           </button>
+          {expiredDraft && <>
+            <p>未提交文件已超過保存期限，後端已確認這筆申請未建立。請重新附加文件後送出。</p>
+            <button className="workspace-button" type="button" disabled={busy} onClick={replaceExpiredDraft}>重新附檔</button>
+          </>}
         </div>
       )}
-      <form className="request-form" onSubmit={submit}>
+      <form className="request-form" onSubmit={submit} aria-busy={busy}>
         <section className="workspace-panel">
           <div className="panel-heading">
             <h2>採購需求</h2>
@@ -329,28 +410,42 @@ export function NewRequest({
           </div>
           <fieldset className="form-fields" disabled={busy || !!saved}>
             <div className="form-field">
-              <label htmlFor="service-query">
-                搜尋服務 <span>＊</span>
+              <label htmlFor="requirements-description">
+                需求說明 <span>＊</span>
               </label>
-              <input
-                id="service-query"
-                name="serviceQuery"
-                type="search"
+              <textarea
+                id="requirements-description"
+                name="description"
                 autoComplete="off"
-                list="service-search-examples"
-                placeholder="例如：總經分析、BTC 加密市場資訊"
+                rows={5}
+                placeholder="例如：我想找總經分析，關注亞洲市場近期利率與通膨，整理主要觀察重點與風險。"
                 required
-                maxLength={200}
-                value={serviceQuery}
-                onChange={(event) => setServiceQuery(event.target.value)}
-                pattern=".*\S.*"
-                aria-describedby="service-query-hint"
+                maxLength={1000}
+                value={description}
+                onChange={(event) => { setDescription(event.target.value); if (descriptionError) setDescriptionError(null); }}
+                aria-invalid={!!descriptionError}
+                aria-describedby={descriptionError ? "requirements-hint requirements-error" : "requirements-hint"}
               />
-              <datalist id="service-search-examples">
-                {SERVICE_SEARCH_EXAMPLES.map((name) => <option key={name} value={name} />)}
-              </datalist>
-              <small id="service-query-hint">可搜尋個股分析、總經分析、加密市場資訊、期貨分析。股票代號、幣種或市場可選填，不必填企業名稱。</small>
-              <small>分析內容為 Demo 範例，非即時行情或投資建議；付款可依後端設定使用 Base Sepolia 測試網。</small>
+              {descriptionError && <p id="requirements-error" className="negative-text" role="alert">{descriptionError}</p>}
+              <small id="requirements-hint">可描述個股分析、總經分析、加密市場資訊或期貨分析的需求，不必指定企業。預算與條件以下方選項為準。</small>
+              <div className="request-attachments">
+                <label htmlFor="requirement-files">附加需求文件 <span className="optional">選填</span></label>
+                <button className="workspace-button" type="button" aria-describedby="attachment-hint"
+                  onClick={() => filePicker.current?.click()}>附加文件{files.length ? `（${files.length}／3）` : ""}</button>
+                <input id="requirement-files" ref={filePicker} name="attachments" type="file" multiple accept={ATTACHMENT_ACCEPT} hidden
+                  aria-describedby={fileError ? "attachment-hint attachment-error" : "attachment-hint"}
+                  aria-invalid={!!fileError}
+                  onChange={(event) => { addFiles(event.target.files); event.target.value = ""; }} />
+                <small id="attachment-hint">PDF、DOCX、TXT、MD，每個最多 2 MB，最多 3 個。文件隨申請保存；請在上方文字中寫明要找的服務。</small>
+                {fileError && <p id="attachment-error" className="negative-text" role="alert">{fileError}</p>}
+                {!!files.length && <ul className="attachment-list">
+                  {files.map((entry) => <li key={entry.clientFileId}>
+                    <span><strong>{entry.file.name}</strong><small>{attachmentSize(entry.file.size)} · 待隨申請保存</small></span>
+                    <button className="workspace-button" type="button" aria-label={`移除 ${entry.file.name}`}
+                      onClick={() => updateFiles(files.filter((item) => item.clientFileId !== entry.clientFileId))}>移除</button>
+                  </li>)}
+                </ul>}
+              </div>
             </div>
             <div className="form-field">
               <label htmlFor="budget">
@@ -377,7 +472,7 @@ export function NewRequest({
               <label className="requirement-choice" htmlFor="requires-invoice">
                 <input id="requires-invoice" type="checkbox" checked={requiresTwInvoice}
                   onChange={(event) => setRequiresTwInvoice(event.target.checked)} />
-                <span><strong>需要發票</strong><small>僅探索可提供發票的服務；本次 Demo 為測試發票。</small></span>
+                <span><strong>需要發票</strong><small>僅比對可提供發票的服務；本次使用測試發票。</small></span>
               </label>
               <label className="requirement-choice" htmlFor="requires-certification">
                 <input id="requires-certification" type="checkbox" checked={requiresRegistryCertification}
@@ -387,20 +482,6 @@ export function NewRequest({
               <p>未勾選的條件不限制探索結果，各服務仍會標示發票與認證的有無。</p>
               {!requiresTwInvoice && settings?.policy?.requireTwInvoice && <p>公司目前仍要求發票。探索會顯示無發票的服務，付款時仍須符合公司政策。</p>}
             </fieldset>
-            <div className="form-field">
-              <label htmlFor="notes">
-                補充需求 <span className="optional">選填</span>
-              </label>
-              <textarea
-                id="notes"
-                rows={4}
-                maxLength={1000}
-                placeholder="例如：關注亞洲市場，整理主要觀察重點與風險。"
-                value={notes}
-                onChange={(event) => setNotes(event.target.value)}
-              />
-              <small>預算與服務條件以上方選項為準，發票抬頭沿用公司設定。</small>
-            </div>
             <details className="request-options">
               <summary>付款前控制（選填）</summary>
               <div className="form-field">
@@ -438,7 +519,7 @@ export function NewRequest({
             </details>
           </fieldset>
           <div className="form-footer">
-            <span>建立申請不會立即付款。</span>
+            <span role="status">{busy ? progress : "建立後自動尋找服務，不會立即付款。"}</span>
             <button
               type="submit"
               className="workspace-button primary"
@@ -452,7 +533,7 @@ export function NewRequest({
                 !settings.services.length
               }
             >
-              {busy ? "建立中…" : "建立申請"}
+              {busy ? "處理中…" : "建立申請"}
             </button>
           </div>
         </section>
@@ -471,7 +552,7 @@ export function NewRequest({
               <Field label="成本中心">
                 {settings?.company?.defaultCostCenter}
               </Field>
-              <Field label="發票要求">{requiresTwInvoice ? "需要發票（Demo 測試介接）" : "不限制"}</Field>
+              <Field label="發票要求">{requiresTwInvoice ? "需要發票（測試環境）" : "不限制"}</Field>
               <Field label="Mello Registry 認證">{requiresRegistryCertification ? "需要有效認證" : "不限制"}</Field>
             </dl>
             <p className="panel-note">發票抬頭與成本中心沿用公司設定。</p>
@@ -479,9 +560,10 @@ export function NewRequest({
           <section className="form-guidance">
             <h2>從需求到採購</h2>
             <p>
-              建立申請 → 開始探索 → 選擇服務 → 送出採購並開始付款。
+              提交需求 → 選擇服務 → 付款與憑證。
             </p>
             <p>Agent 協助比較報價與服務能力，每筆申請由你選用一個服務。付款前仍會檢查公司政策。</p>
+            <p>分析內容為示範範例，非即時行情或投資建議；測試發票不具正式憑證效力。</p>
           </section>
         </aside>
       </form>

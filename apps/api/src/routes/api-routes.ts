@@ -340,11 +340,16 @@ export function createApiRouter(dependencies: CoreApiDependencies): Router {
   router.post("/tasks", async (request, response) => {
     const input = CreateTaskSchema.parse(request.body);
     if (dependencies.controls) {
-      const task = await dependencies.controls.createTask(input);
+      const operationRequestId = requestId(response);
+      const task = await dependencies.controls.createTask(input, (transaction, taskId) => dependencies.workflowJobs.enqueue({
+        kind: "DISCOVER_TASK", aggregateId: taskId, payload: { taskId, requestId: operationRequestId },
+        maxAttempts: dependencies.config.WORKFLOW_MAX_ATTEMPTS,
+      }, transaction), operationRequestId);
       sendJson(response, task.deduplicated ? 200 : 201, { taskId: task.id, status: task.status,
-        requestKey: task.requestKey, deduplicated: task.deduplicated });
+        requestKey: task.requestKey, deduplicated: task.deduplicated, discoveryQueued: task.discoveryQueued });
       return;
     }
+    if (input.requirements || input.attachmentIds?.length) throw new MelloError("INTERNAL_ERROR", "探索排程未配置，申請尚未建立", { statusCode: 500 });
     const task = await dependencies.repository.createTask(input.prompt);
     sendJson(response, 201, { taskId: task.id, status: task.status });
   });
@@ -359,10 +364,10 @@ export function createApiRouter(dependencies: CoreApiDependencies): Router {
     const { taskId } = TaskIdentifierParamsSchema.parse(request.params);
     const operationRequestId = requestId(response);
     await dependencies.controls.discover(taskId, (transaction) => dependencies.workflowJobs.enqueue({
-      kind: "RUN_TASK", aggregateId: taskId, payload: { taskId, requestId: operationRequestId },
+      kind: "DISCOVER_TASK", aggregateId: taskId, payload: { taskId, requestId: operationRequestId },
       maxAttempts: dependencies.config.WORKFLOW_MAX_ATTEMPTS,
     }, transaction), operationRequestId);
-    sendJson(response, 202, { taskId, status: "PARSING" });
+    sendJson(response, 202, { taskId, status: "CREATED", discoveryQueued: true });
   });
 
   router.post("/tasks/:taskId/select", async (request, response) => {
@@ -395,6 +400,10 @@ export function createApiRouter(dependencies: CoreApiDependencies): Router {
       throw new MelloError("TASK_ALREADY_RUNNING", "Use a dedicated retry endpoint", {
         statusCode: 409,
       });
+    }
+    const control = await dependencies.controls?.detail(taskId);
+    if (control?.requirements && !control.selectedService) {
+      throw new MelloError("TASK_ALREADY_RUNNING", "請先等待探索完成並選用服務；探索失敗請使用專用重試。", { statusCode: 409 });
     }
     const operationRequestId = requestId(response);
     await dependencies.controls?.ensureNotFrozen();

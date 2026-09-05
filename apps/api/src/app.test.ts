@@ -129,6 +129,7 @@ function fakeRepository(): CoreApiRepository {
 
 function fakeWorkflow(): WorkflowOperations {
   return {
+    discover: vi.fn(async () => undefined),
     run: vi.fn(async () => undefined),
     retryInvoice: vi.fn(async () => undefined),
     retryAnchor: vi.fn(async () => undefined),
@@ -397,6 +398,39 @@ describe("Core API HTTP app", () => {
 
     const detail = await supertest(app).get(`/api/v1/tasks/${TASK_ID}`).expect(200);
     expect(detail.body.taskId).toBe(TASK_ID);
+  });
+
+  it("queues only discovery while creating a modern request and returns its durable dispatch status", async () => {
+    const transaction = {} as never;
+    const input = { prompt: "搜尋服務：加密市場資訊", requestKey: "create-auto-discovery-request",
+      requirements: { requiresTwInvoice: false, requiresRegistryCertification: false } };
+    const createTask = vi.fn(async (_input: unknown, enqueue: (tx: never, taskId: string) => Promise<{ id: string }>) => {
+      await enqueue(transaction, TASK_ID);
+      return { id: TASK_ID, status: "CREATED", requestKey: input.requestKey, deduplicated: false, discoveryQueued: true };
+    });
+    const runtime = dependencies({ controls: { createTask } as never });
+    const response = await supertest(createApp(runtime)).post("/api/v1/tasks").send(input).expect(201);
+    expect(response.body).toMatchObject({ taskId: TASK_ID, status: "CREATED", discoveryQueued: true, deduplicated: false });
+    expect(runtime.workflowJobs.enqueue).toHaveBeenCalledWith(expect.objectContaining({ kind: "DISCOVER_TASK", aggregateId: TASK_ID }), transaction);
+    expect(runtime.workflow.run).not.toHaveBeenCalled();
+    expect(runtime.repository.createTask).not.toHaveBeenCalled();
+  });
+
+  it("does not create a modern request without a durable discovery control boundary", async () => {
+    const runtime = dependencies();
+    await supertest(createApp(runtime)).post("/api/v1/tasks").send({ prompt: "搜尋服務：總經分析",
+      requirements: { requiresTwInvoice: false, requiresRegistryCertification: false } }).expect(500);
+    expect(runtime.repository.createTask).not.toHaveBeenCalled();
+    expect(runtime.workflowJobs.enqueue).not.toHaveBeenCalled();
+  });
+
+  it("blocks the legacy run endpoint for an unselected modern request", async () => {
+    const runtime = dependencies({ controls: { detail: vi.fn(async () => ({
+      requirements: { requiresTwInvoice: false, requiresRegistryCertification: false }, selectedService: null,
+    })) } as never });
+    await supertest(createApp(runtime)).post(`/api/v1/tasks/${TASK_ID}/run`).expect(409);
+    expect(runtime.workflowJobs.enqueue).not.toHaveBeenCalled();
+    expect(runtime.workflow.run).not.toHaveBeenCalled();
   });
 
   it("lists the seeded seller and service registry", async () => {

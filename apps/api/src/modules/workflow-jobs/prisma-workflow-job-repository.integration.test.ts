@@ -102,6 +102,30 @@ describe.skipIf(!RUN_INTEGRATION_TESTS).sequential(
       );
     });
 
+    it("serializes discovery and purchase dispatch for the same task across different job kinds", async () => {
+      const taskId = await createTask();
+      await prisma.taskControl.create({ data: { taskId, requestKey: randomUUID(), requestHash: "test-only-request-hash",
+        requirements: { requiresTwInvoice: false, requiresRegistryCertification: false } } });
+      const results = await Promise.allSettled((["DISCOVER_TASK", "RUN_TASK"] as const).map((kind) => repository.enqueue({
+        kind, aggregateId: taskId, payload: { taskId, requestId: randomUUID() },
+      })));
+      expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+      expect(results.find((result) => result.status === "rejected")).toMatchObject({ reason: { code: "TASK_ALREADY_RUNNING" } });
+      expect(await prisma.workflowJob.count({ where: { aggregateId: taskId, status: "PENDING" } })).toBe(1);
+      expect(await prisma.purchase.count({ where: { taskId } })).toBe(0);
+    });
+
+    it("enforces the cross-kind active-task exclusion for direct writes without application locks", async () => {
+      const taskId = await createTask();
+      const first = await prisma.workflowJob.create({ data: { kind: "DISCOVER_TASK", aggregateId: taskId,
+        payload: { taskId, requestId: "direct-discovery" } } });
+      await expect(prisma.workflowJob.create({ data: { kind: "RUN_TASK", aggregateId: taskId,
+        payload: { taskId, requestId: "direct-purchase" } } })).rejects.toMatchObject({ code: "P2002" });
+      await prisma.workflowJob.update({ where: { id: first.id }, data: { status: "SUCCEEDED" } });
+      await expect(prisma.workflowJob.create({ data: { kind: "RUN_TASK", aggregateId: taskId,
+        payload: { taskId, requestId: "purchase-after-terminal" } } })).resolves.toMatchObject({ kind: "RUN_TASK" });
+    });
+
     it("reclaims a crashed worker only after lease expiry and consumes the next attempt", async () => {
       const taskId = await createTask();
       await repository.enqueue({

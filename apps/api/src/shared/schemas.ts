@@ -170,6 +170,12 @@ export const CreateTaskSchema = z.object({
   approvalLimitAtomic: AtomicAmountSchema.max(78).optional(),
   expectedPayTo: EvmAddressSchema.optional(),
   requirements: TaskRequirementsSchema.optional(),
+  attachmentIds: z.array(z.uuid()).max(3).refine((ids) => new Set(ids).size === ids.length, "附件不能重複").optional(),
+}).superRefine((input, context) => {
+  if (input.attachmentIds?.length) {
+    if (!input.requestKey) context.addIssue({ code: "custom", path: ["requestKey"], message: "附件必須綁定申請編號。" });
+    if (!input.requirements) context.addIssue({ code: "custom", path: ["requirements"], message: "附件只適用於需確認選用服務的申請。" });
+  }
 });
 
 export const Erc3009AuthorizationRecordSchema = z.object({

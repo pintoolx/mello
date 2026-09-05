@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useRef, useState } from "react";
 import { ServiceSurvey } from "./service-survey";
+import { TaskAttachments } from "./task-attachments";
 import { visibleSurveyCandidates } from "../../lib/service-survey";
 import { intentServiceName, serviceName, supplierName, taskServiceTitle } from "../../lib/service-catalog";
 import {
@@ -80,7 +81,7 @@ export function TaskDetail({
     );
   const selectionSubmitted = !!task.control?.selectedService;
   const candidates = visibleSurveyCandidates(task.candidates ?? [], task.control?.requirements);
-  const step = task.purchase || selectionSubmitted ? 3 : task.status === "WAITING_SELECTION" ? 2 : task.status === "CREATED" ? 0 : 1;
+  const step = task.purchase || selectionSubmitted ? 2 : task.status === "WAITING_SELECTION" ? 1 : 0;
   return (
     <>
       <Link href="/app" className="back-link">
@@ -91,18 +92,18 @@ export function TaskDetail({
         description={`案件 ${shortId(taskId)}　／　建立於 ${dateTime(task.createdAt)}`}
       >
         <Badge status={task.status} />
-        {task.status === "CREATED" && (
+        {task.status === "CREATED" && (selectionSubmitted || !task.control?.discoveryQueued) && (
           <button
             className="workspace-button primary"
             disabled={actionBusy || (selectionSubmitted && frozen)}
             onClick={() => void action(`/tasks/${taskId}/${selectionSubmitted ? "run" : "discover"}`)}
           >
-            {actionBusy ? "處理中…" : selectionSubmitted ? "繼續採購處理" : "開始探索"}
+            {actionBusy ? "處理中…" : selectionSubmitted ? "繼續採購處理" : "繼續處理申請"}
           </button>
         )}
       </PageHeading>
       <ol className="procurement-steps" aria-label="採購流程">
-        {["建立申請", "Agent 探索服務", "人工選用服務", "採購與付款"].map((label, index) => (
+        {["提交需求", "選擇服務", "付款與憑證"].map((label, index) => (
           <li key={label} className={index <= step ? "is-active" : undefined} aria-current={index === step ? "step" : undefined}>
             <span>{index + 1}</span>{label}
           </li>
@@ -175,9 +176,9 @@ export function TaskDetail({
           </p>
         </div>
       )}
-      {(running(task.status) || resource.awaitingAction) && (
+      {(running(task.status) || resource.awaitingAction || (task.status === "CREATED" && !!task.control?.discoveryQueued)) && (
         <div className="processing-note" role="status">
-          系統正在處理此案件，狀態將自動更新。你可以離開此頁，稍後從清單繼續查看。
+          {step === 0 ? "申請已受理，正在尋找符合需求的服務。結果會自動顯示，選用並確認前不會付款。" : "系統正在處理此案件，狀態將自動更新。你可以離開此頁，稍後從清單繼續查看。"}
         </div>
       )}
       <section className="case-summary" aria-label="案件摘要">
@@ -253,6 +254,7 @@ export function TaskDetail({
                 <span>建立後留存，不覆蓋原始內容</span>
               </div>
               <p className="request-prompt">{task.prompt}</p>
+              <TaskAttachments taskId={taskId} />
               <dl className="policy-fields">
                 <Field label="完整案件編號" mono>
                   {task.taskId}
@@ -275,7 +277,7 @@ export function TaskDetail({
               )}
               {task.status === "CREATED" && (
                 <p className="panel-note">
-                  {selectionSubmitted ? "已選用服務，等待付款前檢查。" : "點選「開始探索」，Agent 會先比較服務的報價、發票與認證。由你選用服務後，再送出採購。"}
+                  {selectionSubmitted ? "已選用服務，等待付款前檢查。" : "系統會比較服務的報價、發票與認證。由你選用並確認後，再送出採購。"}
                 </p>
               )}
             </>
@@ -322,7 +324,7 @@ export function TaskDetail({
                             </td>
                             <td>
                               {candidate.supportsTwInvoice
-                                ? "有（Demo 測試）"
+                                ? "有（測試發票）"
                                 : "無"}
                             </td>
                             <td>{candidate.verificationStatus === "VERIFIED" ? "有" : "無"}</td>
@@ -353,7 +355,7 @@ export function TaskDetail({
                 </div>
               ) : (
                 <Notice title={task.status === "WAITING_SELECTION" ? "沒有符合條件的服務" : "尚無供應商評估"}>
-                  {task.status === "WAITING_SELECTION" ? "可重新探索，或建立另一筆申請調整服務條件。" : "開始探索後，這裡會保存候選報價、發票及認證能力。"}
+                  {task.status === "WAITING_SELECTION" ? "可重新探索，或建立另一筆申請調整服務條件。" : "完成比對後，這裡會保存候選報價、發票及認證能力。"}
                 </Notice>
               )}
               {task.decisionSummary && (
@@ -513,7 +515,7 @@ function PurchaseRecords({
             <Field label="發票號碼" mono>
               {purchase.invoice?.invoiceNumber}
             </Field>
-            <Field label="介接模式">{purchase.modes?.invoice}</Field>
+            <Field label="發票環境">{purchase.modes?.invoice ? "測試環境" : "—"}</Field>
             {purchase.invoice?.buyerProfile && <>
               <Field label="發票抬頭">{purchase.invoice.buyerProfile.legalName}</Field>
               <Field label="發票統一編號" mono>{purchase.invoice.buyerProfile.businessId}</Field>

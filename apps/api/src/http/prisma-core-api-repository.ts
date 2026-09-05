@@ -22,7 +22,7 @@ import type {
   PurchaseRetryState,
   TaskExecutionState,
 } from "./contracts.js";
-import { acquireWorkflowQueueExclusiveLock } from "../modules/workflow-jobs/queue-lock.js";
+import { acquireTaskDispatchLock, acquireWorkflowQueueExclusiveLock, acquireWorkflowQueueSharedLock } from "../modules/workflow-jobs/queue-lock.js";
 
 const PURCHASE_DETAIL_INCLUDE = {
   task: true,
@@ -734,6 +734,24 @@ export class PrismaCoreApiRepository implements CoreApiRepository {
   async recordBackgroundFailure(input: BackgroundFailureInput): Promise<void> {
     const code = errorCode(input.error);
     const message = errorMessage(input.error);
+    if (input.operation === "DISCOVER_TASK") {
+      if (!input.taskId || !input.jobId) return;
+      const { taskId, jobId } = input;
+      await this.prisma.$transaction(async (transaction) => {
+        await acquireWorkflowQueueSharedLock(transaction);
+        await acquireTaskDispatchLock(transaction, taskId);
+        const task = await transaction.task.findUnique({ where: { id: taskId }, include: { control: true, purchase: true } });
+        if (!task || task.control?.discoveryJobId !== jobId || task.control.selectedService || task.control.approvedAt || task.purchase ||
+          !["CREATED", "PARSING", "DISCOVERING", "EVALUATING"].includes(task.status)) return;
+        const changed = await transaction.task.updateMany({ where: { id: taskId, status: task.status,
+          control: { is: { discoveryJobId: jobId } } }, data: { status: "FAILED", errorCode: code, errorMessage: message } });
+        if (changed.count !== 1) return;
+        await transaction.auditEvent.create({ data: { aggregateType: "TASK", aggregateId: taskId, taskId, requestId: input.requestId,
+          actorType: "SYSTEM", eventType: "BACKGROUND_DISCOVER_TASK_FAILED_FINAL", stage: "FAILED_FINAL",
+          payload: { jobId, errorCode: code, paymentCreated: false, automaticRepaymentAllowed: false, manualDiscoveryRetryAvailable: true } } });
+      });
+      return;
+    }
     if (input.operation === "RUN_TASK" && input.taskId) {
       const taskId = input.taskId;
       await this.prisma.$transaction(async (transaction) => {

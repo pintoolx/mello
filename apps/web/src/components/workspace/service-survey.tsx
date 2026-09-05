@@ -49,7 +49,7 @@ export function ServiceSurvey({ task, busy, frozen, onSelect, onExplore }: {
                   <small>供應商：{supplierName(candidate)}</small>
                   {candidate.description && <small>{candidate.description}</small>}
                   <span className="survey-capabilities">
-                    <span className={candidate.supportsTwInvoice ? "positive-text" : "muted-text"}>發票：{candidate.supportsTwInvoice ? "有（Demo 測試）" : "無"}</span>
+                    <span className={candidate.supportsTwInvoice ? "positive-text" : "muted-text"}>發票：{candidate.supportsTwInvoice ? "有（測試發票）" : "無"}</span>
                     <span className={certified ? "positive-text" : "muted-text"}>Mello Registry 認證：{certified ? "有" : "無"}</span>
                   </span>
                   <small>{candidate.eligible ? "符合本次需求與付款條件" : (candidate.reasonCodes ?? []).map(surveyReason).join("；")}</small>
