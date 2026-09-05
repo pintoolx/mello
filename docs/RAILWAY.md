@@ -4,6 +4,8 @@
 
 新版主系統與 `apps/docs` 分開部署；文件站不使用任何 API／session／錢包環境。Dockerfiles 的安裝階段包含三個 workspace manifests，實際 runtime 仍只放目標服務。PR #2 的合併與後續部署分別驗收，舊版控制台紀錄見 [歷史驗收](DEMO_ACCEPTANCE.md)。
 
+目前線上網址、新合約、五個服務的指定 deployment IDs 與兩筆真實付款，見 [新版工作區 live 驗收](WORKSPACE_LIVE_ACCEPTANCE.md)。
+
 | Service | Build | Start | Health |
 | --- | --- | --- | --- |
 | api | Dockerfile.api | image default | /healthz |

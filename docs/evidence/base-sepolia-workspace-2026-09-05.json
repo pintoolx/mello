@@ -1,0 +1,173 @@
+{
+  "schemaVersion": 1,
+  "releaseSourceCommit": "438c4abb482eca2f2b7737ac5f65f0b990cb18a6",
+  "webUrl": "https://web-production-158a1.up.railway.app",
+  "docsUrl": "https://docs-production-8a88.up.railway.app",
+  "scope": "Real Base Sepolia x402 Test USDC payments and on-chain audit anchors. Credit reports and invoices remain Demo.",
+  "railway": {
+    "projectId": "58411a4f-2dde-47c7-8eb0-ca6566cdc3f7",
+    "environmentId": "8110aa67-4c8f-4608-bb6d-8a8c24a17f0c",
+    "services": [
+      {
+        "name": "api",
+        "serviceId": "e4d7966c-20ba-4191-ae14-0c4a5ca899f7",
+        "deploymentId": "39cc0507-4220-4ff0-bd46-e3773a9c7f93",
+        "status": "SUCCESS"
+      },
+      {
+        "name": "seller-a",
+        "serviceId": "135bf31f-2766-4642-877c-b2e6d868e669",
+        "deploymentId": "98f169a4-8ef0-4727-9770-8312e8c8dafa",
+        "status": "SUCCESS"
+      },
+      {
+        "name": "seller-b",
+        "serviceId": "5aad400c-c567-4b78-8440-8cf2218bd16b",
+        "deploymentId": "904a7b71-7b2b-4d81-bc11-705a02e44202",
+        "status": "SUCCESS"
+      },
+      {
+        "name": "web",
+        "serviceId": "5ba6a7b3-8e7d-4083-a598-a7e0bc2761ab",
+        "deploymentId": "d9411c04-fc9c-4778-83bb-46de2abdb159",
+        "status": "SUCCESS"
+      },
+      {
+        "name": "docs",
+        "serviceId": "03f76626-4a29-4794-9b8c-e699673bee02",
+        "deploymentId": "2102b6fe-ac12-4111-aaf6-480aa6b9c3b4",
+        "status": "SUCCESS"
+      }
+    ],
+    "postgresDeploymentUnchanged": "81e65891-64d0-4b3c-94aa-38c7aa4e8c41",
+    "persistentVolumeRetained": "573162b6-35b9-40a0-9329-7c81ecc8b985"
+  },
+  "contractDeployment": {
+    "address": "0x4cf30aee920ef8fcb103f442406a33da93e093ce",
+    "transactionHash": "0x8b172141096bf2b952803d780081a0335584567e9655296942e3e4324e1206da",
+    "blockNumber": "46415089",
+    "gasUsed": "1053250",
+    "effectiveGasPrice": "6000000",
+    "receiptStatus": "success",
+    "operator": "0x7EacaAF2F59460bD92908c0aDB2efA12f584Ac4D",
+    "runtimeBytecodeMatchesTestedBuild": true,
+    "operatorAndAdminRolesVerified": true
+  },
+  "testResults": {
+    "apiUnit": 308,
+    "webUnit": 6,
+    "foundry": 24,
+    "allWorkspaceLintAndTypecheck": true,
+    "docsDockerBuildAndHttpHealth": true,
+    "localBrowserChecks": 10,
+    "liveBrowserChecks": 10,
+    "liveBrowserPageErrors": 0,
+    "viewports": [
+      375,
+      768,
+      1280
+    ],
+    "security": {
+      "trackedFilesScanned": 239,
+      "livePagesScanned": 12,
+      "liveClientChunksScanned": 16,
+      "secretMatches": 0,
+      "invalidExpiredAndOverlongSessionsRejected": 3
+    }
+  },
+  "chainVerification": {
+    "verifiedAt": "2026-09-05T09:03:34.904Z",
+    "chainId": 84532,
+    "registry": "0x4cf30aee920ef8fcb103f442406a33da93e093ce",
+    "token": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+    "totalTestUsdcAtomic": "100000",
+    "registryTestUsdcAtomic": "0",
+    "ok": true,
+    "proofs": [
+      {
+        "taskId": "73d2eb95-0abe-4dc2-ad49-e197e736d9e4",
+        "purchaseId": "aad84faa-93bc-4020-ad39-573a0de26256",
+        "settlementHash": "0xff38e2c4805c5a5b5c0fd84d9ee5575ff4fe4fdae412438f0ec4dcf78140296d",
+        "settlementBlock": "46415299",
+        "usdcAtomic": "50000",
+        "matchingTransferCount": 1,
+        "buyer": "0xb2CeD43A1b2f80Cc2ae487a7e7927b9000FADe02",
+        "seller": "0xc7f80159aEe4fEe2b4C53FfC068B0AB123a5eB36",
+        "registryStatus": "FINALIZED",
+        "allEvidenceHashesMatch": true,
+        "anchors": [
+          {
+            "kind": "AUTHORIZE",
+            "transactionHash": "0xa697b94cebfefcc1dabe17fc5df834da4df0f3e10cf4146b645ed934b2f2b1b4",
+            "blockNumber": "46415299",
+            "receiptStatus": "success"
+          },
+          {
+            "kind": "FINALIZE",
+            "transactionHash": "0xe5a56c6f8f6111027a0fbe6c458b72e9e30531de333245c5eb1fca81f632f95a",
+            "blockNumber": "46415301",
+            "receiptStatus": "success"
+          }
+        ]
+      },
+      {
+        "taskId": "5b3006d4-2af6-4633-a240-9ed6dd42f47f",
+        "purchaseId": "c9eee34b-b170-44d0-b008-482984816d8f",
+        "settlementHash": "0x5407fd7fc269d817239ecaab75c51ee747553d9d4c4ee0c029b9a0ed612cdf42",
+        "settlementBlock": "46415318",
+        "usdcAtomic": "50000",
+        "matchingTransferCount": 1,
+        "buyer": "0xb2CeD43A1b2f80Cc2ae487a7e7927b9000FADe02",
+        "seller": "0xc7f80159aEe4fEe2b4C53FfC068B0AB123a5eB36",
+        "registryStatus": "FINALIZED",
+        "allEvidenceHashesMatch": true,
+        "anchors": [
+          {
+            "kind": "AUTHORIZE",
+            "transactionHash": "0x89e5ebdc9e78dbdbd7f0e8a10e9601a72b1da916d64b04ffaa1316b27c6d3003",
+            "blockNumber": "46415317",
+            "receiptStatus": "success"
+          },
+          {
+            "kind": "FINALIZE",
+            "transactionHash": "0x6c8b600bd44a1465834e8f02b763b3428974cd346ab7eace6d09abdc228cb365",
+            "blockNumber": "46415320",
+            "receiptStatus": "success"
+          }
+        ]
+      }
+    ]
+  },
+  "finalState": {
+    "health": "ok",
+    "paymentsFrozen": false,
+    "totalPurchases": 5,
+    "totalTasks": 9,
+    "retainedOldPurchases": 3,
+    "oldRegistryStillFinalized": true,
+    "newTasks": [
+      {
+        "taskId": "5b3006d4-2af6-4633-a240-9ed6dd42f47f",
+        "status": "COMPLETED"
+      },
+      {
+        "taskId": "09cfc6f0-0969-4b2a-939d-0d12201f1717",
+        "status": "REJECTED"
+      },
+      {
+        "taskId": "35d0ecbb-b0a3-41a6-9ff0-1ace3decfc8a",
+        "status": "REJECTED"
+      },
+      {
+        "taskId": "73d2eb95-0abe-4dc2-ad49-e197e736d9e4",
+        "status": "COMPLETED"
+      }
+    ],
+    "buyerTestUsdcAtomic": "550000",
+    "operatorTestEth": "0.000061506227877224",
+    "operatorNonce": 22,
+    "noPendingOperatorTransactions": true,
+    "actualTestUsdcSpent": "0.10"
+  },
+  "testEthSpentIncludingDeploymentAndFourAnchors": "0.000010438020273704"
+}

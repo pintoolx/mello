@@ -2,7 +2,9 @@
 
 Mello 是台灣企業的 Agent Purchase-to-Pay 控制層。`apps/web` 是企業採購主系統，已串接 `apps/api` 的採購 workflow、PostgreSQL、付款、發票與稽核紀錄。`apps/docs` 是完全獨立的文件站，取代原本的官網。付款依後端環境使用 mock 或 testnet；正式電子發票 adapter 尚未實作。
 
-[先前 Railway / Base Sepolia 驗收與交易證據](docs/DEMO_ACCEPTANCE.md)（舊版控制台的部署紀錄；本次新版工作區合併不代表已重新部署）。
+[目前 Railway / Base Sepolia 實測與交易證據](docs/WORKSPACE_LIVE_ACCEPTANCE.md)：新版工作區已重新部署，兩筆合計 0.10 Test USDC 的真實付款與四筆存證通過驗證。信用報告與發票仍為 Demo。[舊版控制台紀錄](docs/DEMO_ACCEPTANCE.md) 另行保留。
+
+[開啟主系統](https://web-production-158a1.up.railway.app/app) · [獨立文件站](https://docs-production-8a88.up.railway.app)
 
 [新版工作區整合驗收](docs/WORKSPACE_MERGE_ACCEPTANCE.md) · [前端欄位／狀態／endpoint 對照](apps/api/docs/FRONTEND_INTEGRATION.md)
 
