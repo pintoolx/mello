@@ -10,6 +10,14 @@ Mello 對應 Enterprise AI Agents、Secure Transaction Authorization 與 Risk-aw
 
 目前若使用 `AGENT_MODE=demo`，代表固定解析器，不是自主 LLM 決策；若 `PAYMENT_MODE=mock`，代表模擬結算。交件時必須和已接通的真實能力分開說明。真實 AI 與 testnet 的啟用、驗證由後端環境及整合測試負責，不能靠前端改標籤冒充。
 
+## 標準定位的說法
+
+只提兩個編號：EIP-3009 與 ERC-8004。多提會稀釋敘事，也會被追問未實作的部分。
+
+EIP-3009 是已實作的事實陳述。x402 的 EVM exact scheme 建在 `transferWithAuthorization` 上，本專案把整份授權存成憑證：`validAfter`、`validBefore`、`nonce`、EIP-712 domain、`typedDataHash`、`signatureHash`，並與 `settlementTxHash` 綁定（`Erc3009AuthorizationRecordSchema`）。可以說「授權書與付款憑證是兩份可獨立驗證的證據」。資料庫層的 `nonce` 唯一約束即取自 3009 的 nonce 語意。
+
+ERC-8004 只能說成對接方向，不能說成已實作。可用的掛鉤是規格自己寫的「Payments are orthogonal to this protocol and not covered here」，以及 off-chain feedback 結構裡的 `proofOfPayment` 欄位，其註解指明可放 x402 付款證明。因此說法是：8004 的 reputation registry 需要一份可驗證的付款憑證，本專案產出的正是這份憑證，且包含完整 3009 授權、settlement hash 與自有 registry 的 AUTHORIZE／FINALIZE anchor。`contracts/MelloAuditRegistry.sol` 是自己的最小實作，8004 正在標準化同一個方向。
+
 ## 錄影前
 
 - 依 README 設定資料庫、migrate、seed，啟動 API、兩個 Seller 與前端。`npm run dev` 單獨只會啟動前端。
@@ -47,3 +55,7 @@ Mello 對應 Enterprise AI Agents、Secure Transaction Authorization 與 Risk-aw
 - 「採購政策」可凍結新付款並重新整理確認持久化；在途付款不撤銷。共用存取碼不是正式使用者職務分權。
 - Mock 發票不是正式電子發票，不可稱為已向財政部有效開立。
 - 信用報告仍為 Demo。即使付款與雜湊存證在 Base Sepolia 成功，也不能稱為真實徵信資料。
+- 未實作 ERC-8004。沒有註冊 Identity Registry、沒有寫入 Reputation 或 Validation Registry，只能說「產出的憑證可供其對接」，不可說已支援或已整合。8004 目前仍是 Draft。
+- 不要提 ERC-8126 與 ERC-8196。兩份雖為 Final，但由同一組作者提出、文件僅有參考實作而無已知生產部署；且 8196 引用的是 8126，並未引用 8004，「8196 上接 8004 身分」的說法會被指出有誤。
+- `INVOICE_PROVIDER=ecpay_stage` 只是設定選項，`EcpayStageAdapter` 尚未實作，bootstrap 會直接拋錯。不可展示或宣稱已串接綠界。
+- 付款成功但服務未交付目前沒有退款或爭議流程。被問到時直接說明這是尚未涵蓋的範圍，不要即興描述不存在的機制。
