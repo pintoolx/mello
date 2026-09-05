@@ -55,9 +55,15 @@ npm run qa:visual
 
 QA 會以 headless Chrome 驗證桌機與手機的正常、重複採購、低預算、地址不符及凍結狀態；報告與全頁截圖輸出到系統暫存目錄的 `mello-visual-qa`。
 
+首頁的產品操作錄影由新版企業系統介面產生。需要重新錄製時，先啟動 production server，再執行：
+
+```bash
+npm run record:demo
+```
+
 ## Backend teammate workflow
 
-Repository owner 先在 GitHub 的 **Settings → Collaborators and teams** 將後端夥伴或所屬 team 設為 **Write**。後端夥伴接著執行：
+已具備 `pintoolx/mello` 寫入權限的 organization 成員可直接執行：
 
 ```bash
 git clone git@github.com:pintoolx/mello.git

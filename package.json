@@ -13,6 +13,7 @@
     "start": "npm run start --workspace @mello/web",
     "lint": "npm run lint --workspace @mello/web",
     "typecheck": "npm run typecheck --workspace @mello/web",
-    "qa:visual": "npm run qa:visual --workspace @mello/web"
+    "qa:visual": "npm run qa:visual --workspace @mello/web",
+    "record:demo": "npm run record:demo --workspace @mello/web"
   }
 }

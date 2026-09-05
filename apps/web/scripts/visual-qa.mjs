@@ -154,6 +154,7 @@ async function runViewport(cdp, name, width, height) {
   const compactHomeText = home.text.replace(/\s/g, "");
   result.checks.homeNoHorizontalOverflow = !home.horizontalOverflow;
   result.checks.homeCopy = compactHomeText.includes("讓Agent付錢之後，帳還在。") && compactHomeText.includes("x402解決付款。Mello把帳做完。");
+  result.checks.homeRecording = await evaluate(cdp, `(() => { const video = document.querySelector("video"); return Boolean(video && video.currentSrc.includes("/demo/mello-workflow.mp4") && video.readyState >= 1); })()`);
   result.screenshots.home = await snapshot(cdp, `${name}-home`);
 
   await navigate(cdp, `${baseUrl}/app`);
@@ -166,6 +167,7 @@ async function runViewport(cdp, name, width, height) {
   await sleep(1750);
   const matched = await inspect(cdp);
   result.checks.normalMatched = matched.text.includes("MATCHED") && matched.text.includes("SETTLED") && matched.text.includes("ISSUED_TEST");
+  result.checks.matchedNoHorizontalOverflow = !matched.horizontalOverflow;
   result.screenshots.matched = await snapshot(cdp, `${name}-app-matched`);
 
   await clickByText(cdp, "模擬財務 Agent 重複下單");
