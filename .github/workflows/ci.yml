@@ -40,5 +40,5 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       # Fixtures only: never use a wallet, external seller, LLM key or real funds.
-      - run: npm run test:integration --workspace @mello/api -- src/modules/service-registry/registry.integration.test.ts
+      - run: npm run test:integration --workspace @mello/api -- src/modules/service-registry
       - run: npm run build

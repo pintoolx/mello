@@ -26,6 +26,13 @@
 6. 取得索引付款批准之前，API discovery mode 保持 local_demo，明確顯示尚未
    啟用 Bazaar 採購；不把未收錄服務繞過 Bazaar gate。
 
+既有 Railway 未設定 SSH key；本次不新增帳戶登入金鑰、不公開 API 或 DB。
+API 的 db:prepare 加入預設跳過的 db:sync-public-sellers。只有部署當次明確設定
+MELLO_SYNC_PUBLIC_SELLER_BINDINGS=true 才執行：檢查付款已凍結、無在途任務／
+工作／不確定付款，在同一短 transaction 更新兩個已知 private endpoint，保留
+價格、policy、認證及歷史採購。其他舊網址一律拒絕。成功後把開關設回 false，
+不自動觸發額外部署；未來正常 db:prepare 不做服務資料同步。
+
 ## 待確認的索引付款草案
 
 | 目標 | 收款地址 | 每次 Test USDC |
