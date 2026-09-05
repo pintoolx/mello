@@ -27,6 +27,8 @@ const EnvironmentSchema = z
     DEMO_ADMIN_TOKEN: z.string().min(8).default("change-me-before-public-deploy"),
     API_ACCESS_TOKEN: z.preprocess(blankToUndefined, z.string().min(32).optional()),
     AGENT_MODE: z.enum(["openai", "demo"]).default("demo"),
+    SERVICE_DISCOVERY_MODE: z.enum(["local_demo", "bazaar"]).default("local_demo"),
+    BAZAAR_TIMEOUT_MS: z.coerce.number().int().min(100).max(15_000).default(5_000),
     OPENAI_API_KEY: z.preprocess(blankToUndefined, z.string().min(1).optional()),
     OPENAI_MODEL: z.preprocess(blankToUndefined, z.string().min(1).optional()),
     PAYMENT_MODE: z.enum(["x402", "mock"]).default("mock"),

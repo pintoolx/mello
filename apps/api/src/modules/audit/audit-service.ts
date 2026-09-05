@@ -10,10 +10,10 @@ export interface AuditContext {
 }
 
 export interface AppendAuditEventInput extends AuditContext {
-  aggregateType: "TASK" | "PURCHASE" | "PAYMENT" | "INVOICE" | "ANCHOR";
+  aggregateType: "TASK" | "PURCHASE" | "PAYMENT" | "INVOICE" | "ANCHOR" | "SERVICE";
   aggregateId: string;
   eventType: string;
-  actorType?: "SYSTEM" | "USER";
+  actorType?: "SYSTEM" | "USER" | "ADMIN";
   payload: unknown;
 }
 

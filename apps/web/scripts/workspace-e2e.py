@@ -280,8 +280,11 @@ with sync_playwright() as p:
         check("workspace and independent docs routes render at 375/768/1280 without overflow")
 
         page.goto(base + "/app/tasks/" + first_id, wait_until="networkidle")
+        expect(page.get_by_role("button", name="重新整理", exact=True)).to_be_visible()
         context.clear_cookies()
-        page.get_by_role("button", name="重新整理", exact=True).click()
+        # Use the app's focus refresh: a pending session request or automatic
+        # focus refresh can otherwise remove the button before click dispatch.
+        page.evaluate("window.dispatchEvent(new Event('focus'))")
         expect(page.get_by_role("heading", name="登入採購工作區", exact=True)).to_be_visible()
         page.get_by_label("工作區存取碼").fill(code)
         page.get_by_role("button", name="登入工作區", exact=True).click()

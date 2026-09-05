@@ -52,6 +52,7 @@ export class MockPaymentProvider implements PaymentProvider {
     try {
       unpaidResponse = await this.fetchImplementation(input.endpoint, {
         method: "POST",
+        redirect: "error",
         headers: {
           "content-type": "application/json",
           "x-mello-task-id": input.taskId,
@@ -211,6 +212,7 @@ export class MockPaymentProvider implements PaymentProvider {
         submitted = true;
         const paidResponsePromise = this.fetchImplementation(input.endpoint, {
           method: "POST",
+          redirect: "error",
           headers: {
             "content-type": "application/json",
             "x-mello-mock-payment": "settled",

@@ -4,6 +4,7 @@ import type {
   SettleContext,
 } from "@x402/core/server";
 import { ExactEvmScheme } from "@x402/evm/exact/server";
+import { bazaarResourceServerExtension } from "@x402/extensions/bazaar";
 import {
   paymentMiddleware,
   x402ResourceServer,
@@ -20,6 +21,7 @@ import express, {
   type Response,
 } from "express";
 import { assertSellerServerConfig } from "./config.js";
+import { createPublicRequestLimits } from "./public-request-limits.js";
 import { createFacilitatorClient } from "./facilitator.js";
 import {
   EXPOSED_PAYMENT_HEADERS,
@@ -56,6 +58,7 @@ import {
 import {
   createDeterministicCreditReport,
   CreditReportRequestSchema,
+  PublicCreditReportRequestSchema,
 } from "./report.js";
 import {
   createSellerServiceLogger,
@@ -229,7 +232,17 @@ function createPurchaseContextGate(
       return;
     }
 
-    const parsed = CreditReportRequestSchema.safeParse(req.body);
+    // Only a validated Mello token may populate internal correlation headers.
+    delete req.headers[INTERNAL_TASK_ID_HEADER];
+    delete req.headers[INTERNAL_PURCHASE_ID_HEADER];
+    if (config.bazaarEnabled && !req.get(PAYMENT_SIGNATURE_HEADER) &&
+      !(req.body && typeof req.body === "object" && "purchaseContextToken" in req.body)) {
+      // Public probes need the 402/schema before knowing how to construct input.
+      // Paid requests still validate input before verify/settle is reached.
+      next();
+      return;
+    }
+    const parsed = (config.bazaarEnabled ? PublicCreditReportRequestSchema : CreditReportRequestSchema).safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({
         error: {
@@ -239,6 +252,12 @@ function createPurchaseContextGate(
           details: parsed.error.issues,
         },
       });
+      return;
+    }
+
+    if (!parsed.data.purchaseContextToken) {
+      if (config.bazaarEnabled) next();
+      else purchaseContextError(res);
       return;
     }
 
@@ -631,6 +650,7 @@ function installX402Gate(
   for (const extension of config.resourceServerExtensions ?? []) {
     resourceServer.registerExtension(extension);
   }
+  if (config.bazaarEnabled) resourceServer.registerExtension(bazaarResourceServerExtension);
 
   app.use(
     createX402IdempotencyPrecheck(
@@ -719,6 +739,7 @@ export function createSellerApplication(
   const app = express();
 
   app.disable("x-powered-by");
+  if (config.bazaarEnabled) app.post(CREDIT_REPORT_ROUTE, createPublicRequestLimits());
   app.use(express.json({ limit: "16kb" }));
   app.use((_req, res, next) => {
     setCommonPaymentHeaders(res, config);
@@ -735,6 +756,7 @@ export function createSellerApplication(
       paymentMode: config.paymentMode,
       network: config.network,
       invoiceCapability: config.invoiceCapability,
+      bazaarEnabled: config.bazaarEnabled ?? false,
       priceAtomic: config.priceAtomic,
       tokenAddress: config.tokenAddress,
       tokenDecimals: config.tokenDecimals,
@@ -759,7 +781,7 @@ export function createSellerApplication(
       ? [createMockGate(config, store, waitTimeoutMs, pollIntervalMs)]
       : []),
     async (req, res) => {
-      const parsed = CreditReportRequestSchema.safeParse(req.body);
+      const parsed = (config.bazaarEnabled ? PublicCreditReportRequestSchema : CreditReportRequestSchema).safeParse(req.body);
       if (!parsed.success) {
         res.status(400).json({
           error: {

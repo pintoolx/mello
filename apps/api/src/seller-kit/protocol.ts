@@ -15,6 +15,7 @@ import {
   PAYMENT_IDENTIFIER,
 } from "@x402/extensions/payment-identifier";
 import type { SellerServerConfig } from "./types.js";
+import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
 
 export {
   decodePaymentRequiredHeader,
@@ -49,6 +50,24 @@ export function createRouteExtensions(
 ): Record<string, unknown> {
   return {
     ...(config.routeExtensions ?? {}),
+    ...(config.bazaarEnabled ? declareDiscoveryExtension({
+      // The pinned x402 SDK enriches method from the POST route at runtime.
+      bodyType: "json",
+      input: { targetCompanyName: "Example Co." },
+      inputSchema: {
+        type: "object", properties: {
+          targetCompanyName: { type: "string", minLength: 1, maxLength: 200 },
+          purchaseContextToken: { type: "string", description: "Optional Mello correlation token. Not required for public purchases.", minLength: 16, maxLength: 4096 },
+        },
+        required: ["targetCompanyName"], additionalProperties: false,
+      },
+      output: { example: {
+        reportId: "rpt_00000000000000000000", provider: config.sellerId,
+        targetCompanyName: "Example Co.", riskScore: 50, riskLevel: "MEDIUM",
+        summary: "Demo credit report only", generatedAt: "2026-09-05T00:00:00.000Z",
+        paymentMode: "x402", isDemo: true,
+      } },
+    }) : {}),
     [PAYMENT_IDENTIFIER]: declarePaymentIdentifierExtension(true),
   };
 }

@@ -181,9 +181,26 @@ model Service {
   updatedAt         DateTime   @updatedAt @db.Timestamptz(3)
   seller            Seller     @relation(fields: [sellerId], references: [id], onDelete: Restrict)
   purchases         Purchase[]
+  verification      ServiceVerification?
 
   @@index([category, active])
   @@index([sellerId])
+}
+
+// A manual, scoped review, not automatic KYB or an enterprise purchasing grant.
+model ServiceVerification {
+  serviceId    String   @id @db.VarChar(64)
+  revision     Int      @default(1)
+  status       String   @db.VarChar(16)
+  bindingHash  String   @db.VarChar(66)
+  scopes       Json
+  evidenceRef  String   @db.VarChar(200)
+  reviewedBy   String   @db.VarChar(64)
+  reviewedAt   DateTime @db.Timestamptz(3)
+  expiresAt    DateTime @db.Timestamptz(3)
+  revokedAt    DateTime? @db.Timestamptz(3)
+  revokeReason String?  @db.VarChar(200)
+  service      Service  @relation(fields: [serviceId], references: [id], onDelete: Cascade)
 }
 
 model Task {
@@ -233,6 +250,7 @@ model Purchase {
   serviceId                String                      @db.VarChar(64)
   paymentId                String                      @unique @db.VarChar(128)
   agentMode                String                      @default("demo") @db.VarChar(16)
+  discoveryEvidence        Json?
   paymentMode              String                      @default("mock") @db.VarChar(16)
   invoiceMode              String                      @default("mock") @db.VarChar(32)
   anchorMode               String                      @default("mock") @db.VarChar(16)

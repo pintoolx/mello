@@ -28,6 +28,7 @@
     "db:migrate:dev": "prisma migrate dev --schema prisma/schema.prisma",
     "seed": "tsx --env-file-if-exists=.env src/db/seed.ts",
     "demo:health": "tsx --env-file-if-exists=.env scripts/demo-health.ts",
+    "bazaar:check": "tsx scripts/bazaar-discovery-check.ts",
     "demo:reset": "tsx --env-file-if-exists=.env scripts/demo-reset.ts",
     "demo:smoke": "tsx --env-file-if-exists=.env scripts/demo-smoke.ts",
     "demo:smoke:testnet": "tsx --env-file-if-exists=.env scripts/demo-smoke.ts --testnet",

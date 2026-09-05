@@ -1,6 +1,7 @@
 import {
   createSellerApplication,
   readNetwork,
+  readBazaarEnabled,
   readPaymentMode,
   readPort,
   type SellerApplication,
@@ -29,6 +30,7 @@ export function readSellerBConfig(
     port,
     bindHost: env["SELLER_BIND_HOST"] ?? "127.0.0.1",
     publicUrl: env["SELLER_B_URL"] ?? `http://localhost:${port}`,
+    bazaarEnabled: readBazaarEnabled(env["BAZAAR_PUBLIC_ENABLED"]),
     paymentMode: readPaymentMode(env["PAYMENT_MODE"]),
     facilitatorUrl:
       env["X402_FACILITATOR_URL"] ?? "https://x402.org/facilitator",

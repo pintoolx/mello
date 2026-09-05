@@ -1,6 +1,6 @@
 # Next.js 前端串接交接
 
-本文件對照現有 `apps/web/src/components/mello-console.tsx` 與 `apps/api`。前端已接線，沿用原有視覺；資料、狀態及證據改由後端提供。
+本文件對照現有 `apps/web/src/components/workspace/` 與 `apps/api`。前端已接線，沿用原有視覺；資料、狀態及證據改由後端提供。
 
 ## 整合方式
 
@@ -24,7 +24,7 @@ Next.js server env 設定 `CORE_API_URL`、`API_ACCESS_TOKEN`、`DEMO_ADMIN_TOKE
 
 | 畫面／操作 | Endpoint | 請求／回應重點 |
 | --- | --- | --- |
-| 初始載入公司、政策、供應商 | `GET /settings` | `{ company, policy, sellers, services }` |
+| 初始載入公司、政策、供應商 | `GET /settings` | `{ company, policy, sellers, services, discoveryMode }`；services 含 verification |
 | 工作區登入／登出 | `/api/session` 的 GET / POST / DELETE（不加 v1） | POST `{ code }`；登入失效回登入畫面，保留當前案件 URL |
 | 儀表板／採購紀錄摘要 | `GET /dashboard/summary` | `counts, taskStatuses, purchaseStatuses, settledAmountAtomic, recentPurchases, modes` |
 | 系統狀態 | `GET /demo/health` | `status, checkedAt, modes, checks`；即使 degraded 也可回 HTTP 200 |
@@ -38,6 +38,8 @@ Next.js server env 設定 `CORE_API_URL`、`API_ACCESS_TOKEN`、`DEMO_ADMIN_TOKE
 | 付款紀錄列表 | `GET /purchases?limit=20&offset=0` | `{ items, total, limit, offset }`；列表與詳情 shape 不完全相同 |
 | 服務 registry | `GET /services?category=credit_report` | `{ services: [...] }` |
 | 供應商 registry | `GET /sellers` | `{ sellers: [...] }` |
+| Mello 服務認證 | `GET /registry` | `discoveryMode, catalog, services[].verification`；ACTIVE 不等於已認證 |
+| Bazaar 查詢 | `GET /registry/discovery` | 政策頁手動查詢；筆數、partialResults、listed、verification；不付款、不修改白名單 |
 | 任務／採購稽核事件 | `GET /tasks/:taskId/events`、`GET /purchases/:id/events` | 回 array；支援 `limit, offset`，依 `sequence` 遞增 |
 | 全部稽核事件 | `GET /audit-events` | 回 paginated envelope；可加 `taskId, purchaseId, aggregateType, aggregateId` |
 | 只重試發票 | `POST /purchases/:id/retry-invoice` | 無 body；202；需 `availableActions.retryInvoice=true` |
@@ -48,6 +50,10 @@ Next.js server env 設定 `CORE_API_URL`、`API_ACCESS_TOKEN`、`DEMO_ADMIN_TOKE
 | 清除 demo database | `POST /demo/reset` | admin；只接受 local DB，worker 有 active jobs 時拒絕 |
 
 Invoice retry、anchor retry、payment reconciliation 亦提供 `/tasks/:taskId/...` 的別名。設定 API_ACCESS_TOKEN 後所有 API 需要 `x-mello-api-key`；production 強制要求設定。Admin 操作另需 `x-demo-admin-token`。Browser 由 BFF 補齊，不接觸這些秘密。無效 token 回 401；不存在資源回 404；重複執行中／狀態不允許通常回 409。BFF 不開放 demo reset。
+
+Registry 的 binding／verify／revoke 寫入僅能由可信管理端攜帶 API + admin credentials
+直接操作，BFF 不代理，不把商家認證權限交給共用存取碼。詳見
+[Bazaar 實作與上線邊界](../../../docs/BAZAAR_IMPLEMENTATION.md)。
 
 ## 畫面欄位對照
 
@@ -64,6 +70,9 @@ Invoice retry、anchor retry、payment reconciliation 亦提供 `/tasks/:taskId/
 | 報價 | `candidates[].priceAtomic` | USDC 六位小數；`"50000"` = 0.05 USDC |
 | 台灣發票能力 | `supportsTwInvoice, invoiceCapability` | Seller B 是 `TW_B2B_DEMO`，不是正式開票能力 |
 | 白名單欄 | `settings.policy.allowedSellerIds` | seed 允許 A 和 B；A 被拒的原因是發票要求，不是未在白名單 |
+| Mello 認證／期限 | `settings.services[].verification.status / expiresAt` | 人工範圍審核，不是正式 KYB／開票資格；不可用 seller.status=ACTIVE 推算 |
+| 服務來源 | `task.candidates[].discoverySource / verificationStatus` | Bazaar 模式顯示實際來源與認證；local_demo 不冒充 Bazaar |
+| 採購的認證證據 | `purchase.discoveryEvidence` | 保存原始目錄時間、bindingHash、verificationRevision；不用目前認證覆蓋歷史 |
 | 可用候選／拒絕原因 | `candidates[].eligible / reasonCodes / humanSummary` | 不按 row index 判定；後端會重新排序 |
 | 最終選用服務 | `purchase.selectedService` | `eligible=true` 只表示候選符合，不代表已選用或已付款 |
 | `recommendedAction`、`confidence=0.99` | 尚無這兩個 response 欄位 | 顯示後端 `decisionSummary`；不自行假造 confidence |

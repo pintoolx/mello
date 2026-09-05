@@ -5,7 +5,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 type Context = { params: Promise<{ path: string[] }> };
 const UUID = "[0-9a-fA-F-]{36}";
-const READ = new RegExp(`^(settings|company|policies/active|controls|demo/health|dashboard/summary|services|sellers|audit-events|tasks|purchases|tasks/${UUID}(?:/events)?|purchases/${UUID}(?:/events)?)$`);
+const READ = new RegExp(`^(settings|company|policies/active|controls|demo/health|dashboard/summary|services|sellers|registry(?:/discovery)?|audit-events|tasks|purchases|tasks/${UUID}(?:/events)?|purchases/${UUID}(?:/events)?)$`);
 const WRITE = new RegExp(`^(tasks|tasks/${UUID}/(?:run|approve|retry-invoice|retry-anchor|reconcile-payment)|purchases/${UUID}/(?:retry-invoice|retry-anchor|reconcile-payment))$`);
 
 async function proxy(request: NextRequest, context: Context) {
