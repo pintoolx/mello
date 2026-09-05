@@ -324,6 +324,12 @@ describe("Core API HTTP app", () => {
       .expect(400);
     expect(invalid.body.error.code).toBe("VALIDATION_ERROR");
 
+    for (const invalidFields of [{ invoiceEmail: "invalid" }, { invoiceAddress: "x".repeat(256) }, { contactName: "x".repeat(101) }]) {
+      await supertest(app).put("/api/v1/company")
+        .set("x-demo-admin-token", "api-route-test-fixture-only")
+        .send({ ...COMPANY, ...invalidFields }).expect(400);
+    }
+
     const valid = await supertest(app)
       .put("/api/v1/company")
       .set("x-demo-admin-token", "api-route-test-fixture-only")
@@ -332,9 +338,13 @@ describe("Core API HTTP app", () => {
         businessId: COMPANY.businessId,
         email: COMPANY.email,
         defaultCostCenter: COMPANY.defaultCostCenter,
+        invoiceEmail: "invoices@example.test",
+        invoiceAddress: "台北市信義區",
+        contactName: "財務聯絡人",
       })
       .expect(200);
     expect(valid.body.businessId).toBe("12345675");
+    expect(valid.body).toMatchObject({ invoiceEmail: "invoices@example.test", invoiceAddress: "台北市信義區", contactName: "財務聯絡人" });
     expect(runtime.repository.saveCompany).toHaveBeenCalledOnce();
   });
 

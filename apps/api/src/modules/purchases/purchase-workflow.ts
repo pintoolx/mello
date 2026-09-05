@@ -13,6 +13,8 @@ import {
   MelloError,
   MELLO_CHAIN_ID,
   PolicyInputSchema,
+  InvoiceBuyerProfileSchema,
+  invoiceBuyerProfile,
   PurchaseIntentSchema,
   TaskRequirementsSchema,
   ServiceSelectionSchema,
@@ -974,6 +976,7 @@ export class PurchaseWorkflow {
           taskId,
           buyerProfileId: companyRecord.id,
           serviceId: selectedService.id,
+          buyerProfileSnapshot: jsonValue(invoiceBuyerProfile(companyRecord)),
           paymentId,
           ...capturePurchaseRuntimeEvidence(config),
           ...(discoveryEvidence ? { discoveryEvidence: jsonValue(discoveryEvidence) } : {}),
@@ -2514,6 +2517,10 @@ export class PurchaseWorkflow {
       targetCompanyName?: string;
     } | null;
     const invoiceRequired = policySnapshot.requireTwInvoice || intent?.requiresTwInvoice === true;
+    const buyerProfile = purchase.buyerProfileSnapshot
+      ? InvoiceBuyerProfileSchema.parse(purchase.buyerProfileSnapshot)
+      : undefined;
+    const originalBusinessId = buyerProfile?.businessId ?? intent?.buyerBusinessId ?? purchase.buyerProfile.businessId;
     const enteringReconciliation =
       purchase.task.status === "INVOICING" && purchase.status === "INVOICING";
     const resumingReconciliation =
@@ -2534,6 +2541,7 @@ export class PurchaseWorkflow {
       const issueInput = {
         purchaseId,
         buyerBusinessId,
+        ...(buyerProfile ? { buyerProfile } : {}),
         sellerBusinessId,
         sellerProfileId: purchase.service.seller.id,
         sourceAmountAtomic: purchase.payment.amountAtomic ?? "",
@@ -2580,7 +2588,7 @@ export class PurchaseWorkflow {
             sellerInvoiceCapability: purchase.service.seller.invoiceCapability,
             sellerInvoiceProvider: purchase.service.seller.invoiceProvider,
             buyerBusinessId,
-            companyBusinessId: purchase.buyerProfile.businessId,
+            companyBusinessId: originalBusinessId,
             sellerBusinessId: purchase.service.seller.businessId,
           },
         });
@@ -2775,7 +2783,7 @@ export class PurchaseWorkflow {
             paymentTransactionHash: currentInvoice.paymentTxHash ?? "",
           }
         : null,
-      companyBusinessId: purchase.buyerProfile.businessId,
+      companyBusinessId: originalBusinessId,
       deliveryResponseHash: purchase.delivery.responseHash,
     });
     await prisma.$transaction(async (transaction) => {

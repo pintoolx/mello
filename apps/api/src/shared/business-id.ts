@@ -4,7 +4,9 @@ function sumProductDigits(value: number): number {
   return Math.floor(value / 10) + (value % 10);
 }
 
-/** Taiwan uniform business number checksum, including the seventh-digit 7 rule. */
+/** Taiwan's expanded checksum (2023), including the seventh-digit 7 rule.
+ * https://www.fia.gov.tw/singlehtml/3?cntId=c4d9cff38c8642ef8872774ee9987283
+ */
 export function isValidTaiwanBusinessId(value: string): boolean {
   if (!/^\d{8}$/.test(value)) return false;
 
@@ -14,5 +16,5 @@ export function isValidTaiwanBusinessId(value: string): boolean {
     return total + sumProductDigits(digit * (weight ?? 0));
   }, 0);
 
-  return sum % 10 === 0 || (digits[6] === 7 && (sum + 1) % 10 === 0);
+  return sum % 5 === 0 || (digits[6] === 7 && (sum + 1) % 5 === 0);
 }

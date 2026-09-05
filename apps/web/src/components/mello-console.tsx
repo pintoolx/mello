@@ -13,7 +13,8 @@ import {
   AuditPage,
 } from "./workspace/pages";
 import { TaskDetail } from "./workspace/task-detail";
-import type { Control, Modes, Settings } from "../lib/core-api";
+import { SettingsPage } from "./workspace/settings-page";
+import type { Control, Health, Settings } from "../lib/core-api";
 
 const navigation = [
   { href: "/app", title: "採購申請", icon: "document" },
@@ -21,6 +22,7 @@ const navigation = [
   { href: "/app/invoices", title: "發票與對帳", icon: "invoice" },
   { href: "/app/policy", title: "採購政策", icon: "policy" },
   { href: "/app/audit", title: "稽核紀錄", icon: "audit" },
+  { href: "/app/settings", title: "設定", icon: "settings" },
 ];
 
 function NavIcon({ name }: { name: string }) {
@@ -30,6 +32,7 @@ function NavIcon({ name }: { name: string }) {
     invoice: "M6 3h12v18l-3-2-3 2-3-2-3 2V3Zm3 5h6m-6 4h6m-6 4h3",
     policy: "m12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6l8-3Zm-4 9 3 3 5-6",
     audit: "M4 4h16v16H4V4Zm4 4h1m3 0h5m-9 4h1m3 0h5m-9 4h1m3 0h5",
+    settings: "M4 6h16M4 12h16M4 18h16M8 3v6m8 0v6m-7 0v6",
   };
   return (
     <svg
@@ -59,7 +62,7 @@ function Workspace() {
   const session = useSession();
   const settings = useResource<Settings>("/settings");
   const controls = useResource<Control>("/controls");
-  const health = useResource<{ modes: Modes }>("/demo/health");
+  const health = useResource<Health>("/demo/health");
   const section =
     navigation.find(
       (item) => item.href !== "/app" && pathname.startsWith(item.href),
@@ -87,6 +90,8 @@ function Workspace() {
       <PolicyPage resource={settings} controls={controls} />
     ) : pathname === "/app/audit" ? (
       <AuditPage />
+    ) : pathname === "/app/settings" ? (
+      <SettingsPage resource={settings} health={health} />
     ) : pathname === "/app" ? (
       <RequestList />
     ) : (

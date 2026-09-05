@@ -517,6 +517,12 @@ function PurchaseRecords({
               {purchase.invoice?.invoiceNumber}
             </Field>
             <Field label="介接模式">{purchase.modes?.invoice}</Field>
+            {purchase.invoice?.buyerProfile && <>
+              <Field label="發票抬頭">{purchase.invoice.buyerProfile.legalName}</Field>
+              <Field label="發票統一編號" mono>{purchase.invoice.buyerProfile.businessId}</Field>
+              <Field label="發票收件 Email">{purchase.invoice.buyerProfile.email}</Field>
+              <Field label="發票地址">{purchase.invoice.buyerProfile.address || "—"}</Field>
+            </>}
           </dl>
           <p className="sandbox-note">
             SANDBOX / TEST INVOICE

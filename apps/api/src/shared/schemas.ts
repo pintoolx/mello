@@ -26,10 +26,36 @@ export const CompanyProfileInputSchema = z.object({
     .string()
     .regex(/^\d{8}$/, "Business ID must contain exactly 8 digits")
     .refine(isValidTaiwanBusinessId, "Business ID checksum is invalid"),
-  email: z.email(),
+  email: z.email().max(254),
   defaultCostCenter: z.string().trim().min(1).max(64),
+  contactName: z.string().trim().max(100).optional(),
+  phone: z.string().trim().max(32).optional(),
+  address: z.string().trim().max(255).optional(),
+  invoiceEmail: z.union([z.email().max(254), z.literal("")]).optional(),
+  invoiceAddress: z.string().trim().max(255).optional(),
 });
 export type CompanyProfileInput = z.infer<typeof CompanyProfileInputSchema>;
+
+export const InvoiceBuyerProfileSchema = z.object({
+  legalName: z.string(),
+  businessId: z.string(),
+  email: z.string(),
+  address: z.string(),
+  contactName: z.string(),
+  phone: z.string(),
+});
+export type InvoiceBuyerProfile = z.infer<typeof InvoiceBuyerProfileSchema>;
+
+export function invoiceBuyerProfile(company: CompanyProfileInput): InvoiceBuyerProfile {
+  return {
+    legalName: company.legalName,
+    businessId: company.businessId,
+    email: company.invoiceEmail || company.email,
+    address: company.invoiceAddress || company.address || "",
+    contactName: company.contactName || "",
+    phone: company.phone || "",
+  };
+}
 
 export const AllowedTokenSchema = z.object({
   symbol: z.literal(USDC_SYMBOL),
