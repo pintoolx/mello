@@ -10,7 +10,7 @@
 | web | Dockerfile.web | image default | /healthz |
 | Postgres | Railway PostgreSQL template + persistent volume | template | template |
 
-API pre-deploy: `npm run db:migrate --workspace @mello/api && npm run db:init --workspace @mello/api`。db:init 僅初始化空 DB，不覆寫既有公司與 policy。API 內建 durable worker，停用 app sleeping、使用一個持續運行 replica。若增加 API replicas，operator transaction nonce 協調需另做壓力驗證。
+API pre-deploy: `npm run db:prepare --workspace @mello/api`。由 npm script 順序執行 migrate 與 init，不仰賴 Railway 解析複合 shell 指令。db:init 僅初始化空 DB，不覆寫既有公司與 policy。API 內建 durable worker，停用 app sleeping、使用一個持續運行 replica。若增加 API replicas，operator transaction nonce 協調需另做壓力驗證。
 
 ## Runtime variables
 
