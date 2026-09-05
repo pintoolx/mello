@@ -1,3 +1,5 @@
+import type { Prisma } from "@mello/db";
+
 export const WORKFLOW_JOB_KINDS = [
   "RUN_TASK",
   "RETRY_INVOICE",
@@ -41,7 +43,7 @@ export interface WorkflowJobFailureResult {
 }
 
 export interface WorkflowJobQueue {
-  enqueue(input: EnqueueWorkflowJobInput): Promise<{ id: string }>;
+  enqueue(input: EnqueueWorkflowJobInput, transaction?: Prisma.TransactionClient): Promise<{ id: string }>;
   hasActiveJobs(): Promise<boolean>;
 }
 

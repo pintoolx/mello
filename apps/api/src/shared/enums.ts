@@ -5,6 +5,7 @@ export const TaskStatusSchema = z.enum([
   "PARSING",
   "DISCOVERING",
   "EVALUATING",
+  "WAITING_SELECTION",
   "REJECTED",
   "AUTH_ANCHOR_PENDING",
   "PAYING",

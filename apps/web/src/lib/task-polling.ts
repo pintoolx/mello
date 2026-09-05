@@ -20,6 +20,7 @@ export function taskPolling(
     "REJECTED",
     "ACTION_REQUIRED",
     "FAILED",
+    "WAITING_SELECTION",
   ].includes(task.status ?? "");
   const shouldPoll =
     awaitingWorker ||

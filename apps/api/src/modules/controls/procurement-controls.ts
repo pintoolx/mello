@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { Prisma, type PrismaClient } from "@mello/db";
-import { hashCanonicalJson, MelloError, parseUsdcToAtomic, type CreateTaskSchema, type ServiceRecord } from "@mello/shared";
+import { hashCanonicalJson, MelloError, parseUsdcToAtomic, ServiceSelectionSchema, TaskRequirementsSchema, type CreateTaskSchema, type ServiceRecord, type ServiceSelection } from "@mello/shared";
 import type { z } from "zod";
 import { appendAuditEvent, jsonValue } from "../audit/index.js";
 
@@ -46,7 +46,8 @@ export class ProcurementControls {
     const limits = [input.approvalLimitAtomic, approvalThreshold(input.prompt)].filter((value): value is string => value !== undefined);
     const limit = limits.length ? limits.reduce((a, b) => BigInt(a) <= BigInt(b) ? a : b) : null;
     const expectedPayTo = input.expectedPayTo?.toLowerCase() ?? null;
-    const requestHash = hashCanonicalJson({ prompt: input.prompt, approvalLimitAtomic: limit, expectedPayTo });
+    const requestHash = hashCanonicalJson({ prompt: input.prompt, approvalLimitAtomic: limit, expectedPayTo,
+      ...(input.requirements ? { requirements: input.requirements } : {}) });
     const existing = await this.prisma.taskControl.findUnique({ where: { requestKey }, include: { task: true } });
     const replay = async (record: NonNullable<typeof existing>) => {
       if (record.requestHash !== requestHash) throw new MelloError("IDEMPOTENCY_CONFLICT", "同一採購請求編號不能搭配不同內容", { statusCode: 409 });
@@ -59,6 +60,7 @@ export class ProcurementControls {
     try {
       const task = await this.prisma.task.create({ data: { prompt: input.prompt, control: { create: {
         requestKey, requestHash, approvalLimitAtomic: limit, expectedPayTo,
+        ...(input.requirements ? { requirements: jsonValue(input.requirements) } : {}),
       } } } });
       return { id: task.id, status: task.status, deduplicated: false, requestKey };
     } catch (error) {
@@ -74,7 +76,68 @@ export class ProcurementControls {
     const control = await this.prisma.taskControl.findUnique({ where: { taskId } });
     if (!control) return null;
     return { requestKey: control.requestKey, approvalLimitAtomic: control.approvalLimitAtomic, expectedPayTo: control.expectedPayTo,
+      requirements: control.requirements, selectedService: control.selectedService,
       pendingTerms: control.pendingTerms, approvedAt: control.approvedAt, paymentReleaseGrantedAt: control.paymentReleaseGrantedAt };
+  }
+
+  async discover(taskId: string, enqueue: (tx: Prisma.TransactionClient) => Promise<unknown>, requestId?: string) {
+    await this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`mello:selection:${taskId}`}, 0)) IS NULL AS acquired`;
+      const task = await tx.task.findUnique({ where: { id: taskId }, include: { control: true, purchase: true } });
+      if (!task) throw new MelloError("NOT_FOUND", "Task not found", { statusCode: 404 });
+      if (task.purchase || !["CREATED", "WAITING_SELECTION", "FAILED"].includes(task.status) ||
+        (task.control?.selectedService && task.status !== "FAILED")) {
+        throw new MelloError("TASK_ALREADY_RUNNING", "此案件已送出採購或仍在處理，請重新讀取。", { statusCode: 409 });
+      }
+      // Old drafts gain the same human-selection boundary when opened in the console.
+      const requirements = TaskRequirementsSchema.parse(task.control?.requirements ?? {
+        requiresTwInvoice: true, requiresRegistryCertification: true,
+      });
+      await tx.taskControl.upsert({ where: { taskId }, create: {
+        taskId, requestKey: randomUUID(), requestHash: hashCanonicalJson({ prompt: task.prompt }),
+        requirements: jsonValue(requirements),
+      }, update: { requirements: jsonValue(requirements), selectedService: Prisma.DbNull } });
+      await tx.task.update({ where: { id: taskId }, data: {
+        status: "CREATED", errorCode: null, errorMessage: null, completedAt: null, runStartedAt: null,
+      } });
+      await appendAuditEvent(tx, { aggregateType: "TASK", aggregateId: taskId, taskId, requestId,
+        actorType: "USER", eventType: "SERVICE_SURVEY_REQUESTED", payload: { requirements, paymentCreated: false } });
+      await enqueue(tx);
+    });
+  }
+
+  async selectService(taskId: string, input: ServiceSelection,
+    enqueue: (tx: Prisma.TransactionClient) => Promise<unknown>, requestId?: string) {
+    await this.ensureNotFrozen();
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`mello:selection:${taskId}`}, 0)) IS NULL AS acquired`;
+      const task = await tx.task.findUnique({ where: { id: taskId }, include: { control: true, purchase: true } });
+      if (!task) throw new MelloError("NOT_FOUND", "Task not found", { statusCode: 404 });
+      const previous = ServiceSelectionSchema.safeParse(task.control?.selectedService);
+      if (previous.success && previous.data.serviceId === input.serviceId && previous.data.selectionHash === input.selectionHash) {
+        return { status: task.status, deduplicated: true };
+      }
+      if (task.status !== "WAITING_SELECTION" || task.purchase || !task.control?.requirements) {
+        throw new MelloError("TASK_ALREADY_RUNNING", "請先完成服務探索，再選擇要採購的服務。", { statusCode: 409 });
+      }
+      const candidates = Array.isArray(task.candidates) ? task.candidates : [];
+      const candidate = candidates.find((value) => value && typeof value === "object" && !Array.isArray(value) &&
+        value["serviceId"] === input.serviceId && value["selectionHash"] === input.selectionHash);
+      if (!candidate || typeof candidate !== "object" || Array.isArray(candidate) ||
+        candidate["eligible"] !== true || candidate["matchesRequirements"] !== true) {
+        throw new MelloError("NO_ELIGIBLE_SERVICE", "請選擇本次探索中符合條件的服務；報價已更新時請重新選擇。", { statusCode: 409 });
+      }
+      await tx.taskControl.update({ where: { taskId }, data: { selectedService: jsonValue(input) } });
+      await tx.task.update({ where: { id: taskId }, data: {
+        status: "CREATED", errorCode: null, errorMessage: null, runStartedAt: null,
+        decisionSummary: "已確認選用服務，等待付款前檢查。",
+      } });
+      await appendAuditEvent(tx, { aggregateType: "TASK", aggregateId: taskId, taskId, requestId,
+        actorType: "USER", eventType: "SERVICE_SELECTED_BY_USER", payload: { ...input, candidate } });
+      // Selection and durable dispatch commit together, including on a lost HTTP response.
+      await enqueue(tx);
+      return { status: "PARSING", deduplicated: false };
+    });
   }
 
   // Runs before purchase creation: a paused approval cannot hold a spend reservation or payment signature.

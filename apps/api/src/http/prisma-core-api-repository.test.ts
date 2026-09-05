@@ -1,5 +1,5 @@
 import type { PrismaClient } from "@mello/db";
-import type { MelloError } from "@mello/shared";
+import { BASE_SEPOLIA_USDC, MELLO_NETWORK, type MelloError } from "@mello/shared";
 import { describe, expect, it, vi } from "vitest";
 import { loadConfig } from "../config.js";
 import {
@@ -346,6 +346,73 @@ describe("purchase evidence links", () => {
       payment: "https://sepolia.basescan.org",
       anchor: "https://sepolia.basescan.org",
     });
+  });
+});
+
+describe("historical purchase payee", () => {
+  it("keeps the purchase payee snapshot when the registry seller wallet rotates", async () => {
+    const originalPayTo = "0x1111111111111111111111111111111111111111";
+    const rotatedPayTo = "0x2222222222222222222222222222222222222222";
+    const service = {
+      id: "credit-report-b",
+      sellerId: "seller-b",
+      category: "credit_report",
+      endpoint: "https://seller.example/v1/credit-report",
+      method: "POST",
+      priceAtomic: "50000",
+      tokenSymbol: "USDC",
+      tokenAddress: BASE_SEPOLIA_USDC,
+      tokenDecimals: 6,
+      network: MELLO_NETWORK,
+      supportsTwInvoice: true,
+      active: true,
+      seller: {
+        legalName: "Demo Seller B",
+        businessId: "12345675",
+        payToAddress: originalPayTo,
+        invoiceCapability: "TW_B2B_DEMO",
+        invoiceProvider: "MOCK",
+      },
+    };
+    const purchase = {
+      id: "00000000-0000-4000-8000-000000000102",
+      taskId: "00000000-0000-4000-8000-000000000101",
+      status: "COMPLETED",
+      task: { prompt: "buy a report" },
+      service,
+      payToAddress: originalPayTo,
+      paymentExplorerBase: null,
+      anchorExplorerBase: null,
+      authorization: null,
+      payment: null,
+      delivery: null,
+      invoice: null,
+      anchors: [],
+    };
+    const prisma = {
+      purchase: { findUnique: vi.fn(async () => purchase) },
+      auditEvent: { findMany: vi.fn(async () => []) },
+      service: { findMany: vi.fn(async () => [service]) },
+    } as unknown as PrismaClient;
+    const config = loadConfig({
+      NODE_ENV: "test",
+      DATABASE_URL: "postgresql://mello:mello@localhost:5432/mello_test",
+    });
+    const repository = new PrismaCoreApiRepository(prisma, config);
+
+    const beforeRotation = await repository.getPurchaseDetail(purchase.id);
+    service.seller.payToAddress = rotatedPayTo;
+    const afterRotation = await repository.getPurchaseDetail(purchase.id);
+
+    expect(afterRotation).toEqual(beforeRotation);
+    expect(afterRotation).toMatchObject({
+      payToAddress: originalPayTo,
+      selectedService: { payToAddress: originalPayTo },
+    });
+    expect(await repository.listServices()).toEqual([
+      expect.objectContaining({ payToAddress: rotatedPayTo }),
+    ]);
+    expect(service.seller.payToAddress).toBe(rotatedPayTo);
   });
 });
 

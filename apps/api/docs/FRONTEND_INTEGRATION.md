@@ -28,7 +28,9 @@ Next.js server env 設定 `CORE_API_URL`、`API_ACCESS_TOKEN`、`DEMO_ADMIN_TOKE
 | 工作區登入／登出 | `/api/session` 的 GET / POST / DELETE（不加 v1） | POST `{ code }`；登入失效回登入畫面，保留當前案件 URL |
 | 儀表板／採購紀錄摘要 | `GET /dashboard/summary` | `counts, taskStatuses, purchaseStatuses, settledAmountAtomic, recentPurchases, modes` |
 | 系統狀態 | `GET /demo/health` | `status, checkedAt, modes, checks`；即使 degraded 也可回 HTTP 200 |
-| 開立採購任務 | `POST /tasks` | `{ prompt, requestKey?, approvalLimitAtomic?, expectedPayTo? }`；新任務 201，相同 key 與內容回 200 同一 task、`deduplicated=true`；不同內容回 409 |
+| 開立採購任務 | `POST /tasks` | `{ prompt, requestKey?, requirements?, approvalLimitAtomic?, expectedPayTo? }`；新任務 201，相同 key 與內容回 200 同一 task、`deduplicated=true`；不同內容（含 requirements）回 409 |
+| 開始／重新探索 | `POST /tasks/:taskId/discover` | 無 body；202 排入 worker；完成後為 `WAITING_SELECTION`，不建立 Purchase 或付款 |
+| 人工選用並送出採購 | `POST /tasks/:taskId/select` | `{ serviceId, selectionHash }`；使用探索回傳的 hash；選用與排程原子寫入，相同選擇重送回 200 |
 | 人工核准 | `POST /tasks/:taskId/approve` | admin；只允許 APPROVAL_REQUIRED，核准綁定完整報價，202 後重新輪詢 |
 | 新付款凍結 | `GET /controls`、`PUT /controls` | PUT 為 admin、body `{ paymentsFrozen: boolean }`；PostgreSQL 持久化 |
 | 執行任務 | `POST /tasks/:taskId/run` | 無 body；一般 202 排入 worker，已完成案件冪等重跑可回 200，不新增付款 |
@@ -54,6 +56,24 @@ Invoice retry、anchor retry、payment reconciliation 亦提供 `/tasks/:taskId/
 Registry 的 binding／verify／revoke 寫入僅能由可信管理端攜帶 API + admin credentials
 直接操作，BFF 不代理，不把商家認證權限交給共用存取碼。詳見
 [Bazaar 實作與上線邊界](../../../docs/BAZAAR_IMPLEMENTATION.md)。
+
+## 探索與人工選用
+
+工作區流程為「建立申請 → 開始探索 → 人工選用一個服務 → 送出採購並開始付款」。表單傳入
+`requirements: { requiresTwInvoice: boolean, requiresRegistryCertification: boolean }`，隨 request key
+保存與復原；明確的發票選項優先於 prompt 與 Agent 的推論。公司付款政策仍會獨立檢查。
+
+探索結果保存在 `task.candidates`；前端僅顯示 `matchesRequirements !== false` 的候選，並標示
+發票與認證有無。未勾選的條件不排除服務；`eligible=false` 的服務保留付款限制說明且不能選用。
+`WAITING_SELECTION` 不持續輪詢，重新載入仍可查看結果。候選 `selectionHash` 綁定服務、
+報價與必要認證版本；付款前重新檢查若有變動，回到 `WAITING_SELECTION`，不自動選擇其他供應商。
+
+未要求認證時，仍只允許已登錄且付款條件一致的服務；Bazaar 模式仍需公開目錄相符，並在放行前
+重新確認 binding。`purchase.discoveryEvidence.requiresCertification` 記錄本次要求，
+`source` 可為 `cdp_bazaar` 或 `local_registry`。未傳 requirements 的既有自動化 API 相容流程保留，
+但透過工作區點選「開始探索」的舊草稿也會加入人工選用步驟。
+
+部署前套用 `20260906000000_procurement_survey_selection` migration，先更新 API，再更新 Web。
 
 ## 畫面欄位對照
 

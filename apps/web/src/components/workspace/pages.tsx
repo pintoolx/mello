@@ -92,7 +92,8 @@ export function RequestList() {
               onChange={(event) => setFilter(event.target.value)}
             >
               <option value="all">全部狀態</option>
-              <option value="CREATED">待送出</option>
+              <option value="CREATED">待探索</option>
+              <option value="WAITING_SELECTION">待選擇服務</option>
               <option value="processing">處理中</option>
               <option value="COMPLETED">已完成</option>
               <option value="ACTION_REQUIRED">待處理</option>
@@ -202,6 +203,8 @@ export function NewRequest({
   const [target, setTarget] = useState("");
   const [budget, setBudget] = useState("0.10");
   const [notes, setNotes] = useState("");
+  const [requiresTwInvoice, setRequiresTwInvoice] = useState(true);
+  const [requiresRegistryCertification, setRequiresRegistryCertification] = useState(true);
   const [approvalLimit, setApprovalLimit] = useState("");
   const [expectedPayTo, setExpectedPayTo] = useState("");
   const snapshot = useSyncExternalStore(
@@ -259,10 +262,11 @@ export function NewRequest({
         throw new Error("預算須介於 0.000001 與 1000000 USDC 之間。");
       const prompt =
         previous?.prompt ??
-        `幫我買一份 ${target.trim()} 的信用報告，預算 ${money(budgetAtomic)} USDC，要開統編發票。${notes.trim() ? `\n補充需求：${notes.trim()}` : ""}`;
+        `幫我買一份 ${target.trim()} 的信用報告，預算 ${money(budgetAtomic)} USDC，${requiresTwInvoice ? "要開統編發票" : "不需要統編發票"}，${requiresRegistryCertification ? "需要" : "不需要"} Mello Registry 認證。${notes.trim() ? `\n補充需求：${notes.trim()}` : ""}`;
       const input: TaskInput = previous ?? {
         prompt,
         requestKey: crypto.randomUUID(),
+        requirements: { requiresTwInvoice, requiresRegistryCertification },
         ...(approvalLimit
           ? { approvalLimitAtomic: atomicAmount(approvalLimit) }
           : {}),
@@ -295,7 +299,7 @@ export function NewRequest({
     <>
       <PageHeading
         title="新增採購申請"
-        description="填寫需求並建立案件，確認後再送出採購。"
+        description="建立申請後，先由 Agent 探索服務，再由你選用並送出採購。"
       >
         <Link href="/app" className="workspace-button">
           返回清單
@@ -369,6 +373,21 @@ export function NewRequest({
               </div>
               <small>以實際報價付款，且須符合公司採購政策。</small>
             </div>
+            <fieldset className="service-requirements">
+              <legend>服務條件</legend>
+              <label className="requirement-choice" htmlFor="requires-invoice">
+                <input id="requires-invoice" type="checkbox" checked={requiresTwInvoice}
+                  onChange={(event) => setRequiresTwInvoice(event.target.checked)} />
+                <span><strong>需要發票</strong><small>僅探索可提供發票的服務；本次 Demo 為測試發票。</small></span>
+              </label>
+              <label className="requirement-choice" htmlFor="requires-certification">
+                <input id="requires-certification" type="checkbox" checked={requiresRegistryCertification}
+                  onChange={(event) => setRequiresRegistryCertification(event.target.checked)} />
+                <span><strong>需要 Mello Registry 認證</strong><small>僅探索認證仍有效的服務。</small></span>
+              </label>
+              <p>未勾選的條件不限制探索結果，各服務仍會標示發票與認證的有無。</p>
+              {!requiresTwInvoice && settings?.policy?.requireTwInvoice && <p>公司目前仍要求發票。探索會顯示無發票的服務，付款時仍須符合公司政策。</p>}
+            </fieldset>
             <div className="form-field">
               <label htmlFor="notes">
                 補充需求 <span className="optional">選填</span>
@@ -381,7 +400,7 @@ export function NewRequest({
                 value={notes}
                 onChange={(event) => setNotes(event.target.value)}
               />
-              <small>金額與發票資料請以上方預算及公司設定為準。</small>
+              <small>預算與服務條件以上方選項為準，發票抬頭沿用公司設定。</small>
             </div>
             <details className="request-options">
               <summary>付款前控制（選填）</summary>
@@ -453,16 +472,17 @@ export function NewRequest({
               <Field label="成本中心">
                 {settings?.company?.defaultCostCenter}
               </Field>
-              <Field label="發票要求">台灣企業發票</Field>
+              <Field label="發票要求">{requiresTwInvoice ? "需要發票（Demo 測試介接）" : "不限制"}</Field>
+              <Field label="Mello Registry 認證">{requiresRegistryCertification ? "需要有效認證" : "不限制"}</Field>
             </dl>
             <p className="panel-note">發票抬頭與成本中心沿用公司設定。</p>
           </section>
           <section className="form-guidance">
-            <h2>送出前，先確認</h2>
+            <h2>從需求到採購</h2>
             <p>
-              建立後可查看完整需求。點選「送出採購」才會進行供應商評估與付款。
+              建立申請 → 開始探索 → 選擇服務 → 送出採購並開始付款。
             </p>
-            <p>報價或發票能力不符時，系統會保留拒絕原因。</p>
+            <p>Agent 協助比較報價與服務能力，每筆申請由你選用一個服務。付款前仍會檢查公司政策。</p>
           </section>
         </aside>
       </form>

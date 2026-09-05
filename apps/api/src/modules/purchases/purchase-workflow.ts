@@ -8,11 +8,14 @@ import {
   type AuditAnchorClient,
   type AnchorTransactionResult,
 } from "@mello/contracts-client";
-import type { Prisma, PrismaClient } from "@mello/db";
+import { Prisma, type PrismaClient } from "@mello/db";
 import {
   MelloError,
   MELLO_CHAIN_ID,
   PolicyInputSchema,
+  PurchaseIntentSchema,
+  TaskRequirementsSchema,
+  ServiceSelectionSchema,
   ServiceRecordSchema,
   hashCanonicalJson,
   sanitizedErrorMessage,
@@ -41,6 +44,7 @@ import {
   selectCandidate,
 } from "../procurement-agent/candidate-evaluator.js";
 import { evaluatePolicy } from "../policies/index.js";
+import { surveyCandidate } from "../procurement-agent/survey.js";
 import { reconcilePurchase } from "../reconciliation/index.js";
 import {
   PendingSettlementVerificationError,
@@ -752,7 +756,7 @@ export class PurchaseWorkflow {
   private async execute(taskId: string, requestId?: string): Promise<void> {
     const { prisma, agent, paymentProvider, config } = this.dependencies;
     const [task, companyRecord, policyRecord, serviceRecords] = await Promise.all([
-      prisma.task.findUniqueOrThrow({ where: { id: taskId } }),
+      prisma.task.findUniqueOrThrow({ where: { id: taskId }, include: { control: true } }),
       prisma.companyProfile.findFirstOrThrow({ orderBy: { createdAt: "asc" } }),
       prisma.policy.findFirstOrThrow({ where: { active: true } }),
       prisma.service.findMany({
@@ -792,17 +796,25 @@ export class PurchaseWorkflow {
       }),
     );
 
-    const parsed = await agent.parse({
+    const requirements = task.control?.requirements ? TaskRequirementsSchema.parse(task.control.requirements) : null;
+    const selection = task.control?.selectedService ? ServiceSelectionSchema.parse(task.control.selectedService) : null;
+    const parsed = selection && task.intent ? {
+      intent: PurchaseIntentSchema.parse(task.intent), usedFallback: task.usedFallbackParser,
+    } : await agent.parse({
       prompt: task.prompt,
       company,
       policyPerTxLimitAtomic: policy.perTxLimitAtomic,
     });
+    // Explicit form choices are authoritative over prose or model inference.
+    if (requirements) parsed.intent.requiresTwInvoice = requirements.requiresTwInvoice;
     await this.setTaskStage(taskId, "DISCOVERING", "INTENT_PARSED", parsed.intent, requestId, {
       intent: jsonValue(parsed.intent),
       usedFallbackParser: parsed.usedFallback,
     });
 
-    const discovery = config.SERVICE_DISCOVERY_MODE === "bazaar" ? await this.registry.discover() : null;
+    const discovery = config.SERVICE_DISCOVERY_MODE === "bazaar"
+      ? await this.registry.discover(requirements?.requiresRegistryCertification ?? true)
+      : requirements ? await this.registry.discoverLocal(requirements.requiresRegistryCertification) : null;
     if (discovery) services = discovery.services;
     await appendAuditEvent(prisma, {
       aggregateType: "TASK", aggregateId: taskId, taskId, requestId, stage: "DISCOVERING",
@@ -816,6 +828,12 @@ export class PurchaseWorkflow {
     });
     const candidates = evaluateCandidates({ intent: parsed.intent, policy, services }).map((candidate) => {
       const assessment = discovery?.assessments.find((item) => item.serviceId === candidate.serviceId);
+      if (requirements) {
+        const service = services.find((item) => item.id === candidate.serviceId)!;
+        return surveyCandidate(candidate, service, requirements,
+          assessment?.verification ?? { status: "UNREVIEWED", revision: null },
+          assessment?.reasonCodes ?? [], discovery?.source);
+      }
       if (!assessment) return candidate;
       const reasons = [...(candidate.eligible ? [] : candidate.reasonCodes), ...assessment.reasonCodes];
       return { ...candidate, discoverySource: "cdp_bazaar", verificationStatus: assessment.verification.status,
@@ -831,7 +849,26 @@ export class PurchaseWorkflow {
       requestId,
       { candidates: jsonValue(candidates) },
     );
-    const selectedCandidate = selectCandidate(candidates);
+    const selectedCandidate = requirements
+      ? candidates.find((candidate) => candidate.serviceId === selection?.serviceId && candidate.eligible &&
+        "selectionHash" in candidate && candidate.selectionHash === selection.selectionHash)
+      : selectCandidate(candidates);
+    if (requirements && !selectedCandidate) {
+      await prisma.$transaction(async (transaction) => {
+        const changed = await transaction.task.updateMany({ where: { id: taskId, status: "EVALUATING" }, data: {
+          status: "WAITING_SELECTION", errorCode: null, errorMessage: null,
+          decisionSummary: selection
+            ? "選用服務的報價或資格已更新，請重新確認服務後送出採購。"
+            : "探索完成，請比較服務並選擇要採購的項目。尚未建立付款。",
+        } });
+        if (changed.count !== 1) throw new MelloError("TASK_ALREADY_RUNNING", "Task changed during survey", { statusCode: 409 });
+        await transaction.taskControl.update({ where: { taskId }, data: { selectedService: Prisma.DbNull } });
+        await appendAuditEvent(transaction, { aggregateType: "TASK", aggregateId: taskId, taskId, requestId,
+          stage: "WAITING_SELECTION", eventType: selection ? "SERVICE_SELECTION_CHANGED" : "SERVICE_SURVEY_READY",
+          payload: { requirements, candidateCount: candidates.length, paymentCreated: false } });
+      });
+      return;
+    }
     if (!selectedCandidate) {
       await prisma.$transaction(async (transaction) => {
         const taskTransition = await transaction.task.updateMany({

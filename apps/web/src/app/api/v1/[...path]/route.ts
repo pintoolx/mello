@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 type Context = { params: Promise<{ path: string[] }> };
 const UUID = "[0-9a-fA-F-]{36}";
 const READ = new RegExp(`^(settings|company|policies/active|controls|demo/health|dashboard/summary|services|sellers|registry(?:/discovery)?|audit-events|tasks|purchases|tasks/${UUID}(?:/events)?|purchases/${UUID}(?:/events)?)$`);
-const WRITE = new RegExp(`^(tasks|tasks/${UUID}/(?:run|approve|retry-invoice|retry-anchor|reconcile-payment)|purchases/${UUID}/(?:retry-invoice|retry-anchor|reconcile-payment))$`);
+const WRITE = new RegExp(`^(tasks|tasks/${UUID}/(?:discover|select|run|approve|retry-invoice|retry-anchor|reconcile-payment)|purchases/${UUID}/(?:retry-invoice|retry-anchor|reconcile-payment))$`);
 
 async function proxy(request: NextRequest, context: Context) {
   const fail = (status: number, message: string) => NextResponse.json({ error: { message } }, { status, headers: { "cache-control": "no-store" } });

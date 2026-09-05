@@ -24,6 +24,8 @@ export interface Policy {
   allowedNetworks: string[];
 }
 export interface Service {
+  matchesRequirements?: boolean;
+  selectionHash?: string;
   id?: string;
   serviceId?: string;
   sellerId: string;
@@ -63,6 +65,7 @@ export interface TaskRow {
   decisionSummary?: string | null;
 }
 export interface Intent {
+  requiresTwInvoice?: boolean;
   targetCompanyName: string;
   maxAmount: { atomic: string };
   buyerBusinessId: string;
@@ -70,7 +73,7 @@ export interface Intent {
   usedDemoDefaultTarget?: boolean;
 }
 export interface Purchase {
-  discoveryEvidence?: { source: "cdp_bazaar"; fetchedAt: string; resource: string; verificationRevision: number; bindingHash: string } | null;
+  discoveryEvidence?: { source: "cdp_bazaar" | "local_registry"; fetchedAt: string; resource: string; verificationRevision: number | null; requiresCertification?: boolean; bindingHash: string } | null;
   purchaseId: string;
   taskId: string;
   status: string;
@@ -113,6 +116,8 @@ export interface Task extends TaskRow {
   purchase: Purchase | null;
   timeline: AuditEvent[];
   control: {
+    requirements?: { requiresTwInvoice: boolean; requiresRegistryCertification: boolean } | null;
+    selectedService?: { serviceId: string; selectionHash: string } | null;
     requestKey: string;
     approvalLimitAtomic: string | null;
     expectedPayTo: string | null;
@@ -205,7 +210,8 @@ export const running = (status: string) =>
     "FINAL_ANCHOR_PENDING",
   ].includes(status);
 const labels: Record<string, string> = {
-  CREATED: "待送出",
+  CREATED: "待探索",
+  WAITING_SELECTION: "待選擇服務",
   PARSING: "受理中",
   DISCOVERING: "查詢供應商",
   EVALUATING: "審核中",
