@@ -15,15 +15,16 @@ import {
   type AuditEvent,
 } from "../../lib/core-api";
 import { taskPolling, type PendingRevision } from "../../lib/task-polling";
+import { createResourceRefresh, resourceRefreshDelay } from "../../lib/resource-refresh";
 
 export function useResource<T>(path: string, poll = false) {
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState<Error | null>(null);
   const [loading, setLoading] = useState(true);
-  const [version, setVersion] = useState(0);
   const [awaitingAction, setAwaitingAction] = useState(false);
   const awaitingRevision = useRef<PendingRevision | null>(null);
-  const refresh = useCallback(() => setVersion((value) => value + 1), []);
+  const refreshRead = useRef<(() => void) | null>(null);
+  const refresh = useCallback(() => refreshRead.current?.(), []);
   const refreshAfterAction = useCallback(
     (updatedAt: string) => {
       awaitingRevision.current = { updatedAt, deadline: Date.now() + 30000 };
@@ -33,13 +34,15 @@ export function useResource<T>(path: string, poll = false) {
     [refresh],
   );
   useEffect(() => {
-    const controller = new AbortController();
     const startedAt = Date.now();
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const fetchData = async () => {
-      try {
-        const result = await api<T>(path, { signal: controller.signal });
-        if (controller.signal.aborted) return;
+    let busyTask = false;
+    const reads = createResourceRefresh({
+      request: (signal) => api<T>(path, {
+        signal: AbortSignal.any([signal, AbortSignal.timeout(35_000)]),
+      }),
+      isActive: () => document.visibilityState !== "hidden" && navigator.onLine !== false,
+      interval: (failures) => resourceRefreshDelay(path, busyTask, failures),
+      onResult: (result) => {
         setData(result);
         setError(null);
         const next = taskPolling(
@@ -51,26 +54,33 @@ export function useResource<T>(path: string, poll = false) {
           awaitingRevision.current = null;
           setAwaitingAction(false);
         }
-        if (poll && next.shouldPoll) timer = setTimeout(fetchData, 1200);
-      } catch (cause) {
-        if (!controller.signal.aborted) {
-          setError(cause instanceof Error ? cause : new Error("讀取失敗"));
+        busyTask = poll && next.shouldPoll;
+      },
+      onError: (cause) => {
+        setError(cause instanceof Error ? cause : new Error("讀取失敗"));
+        // A transient read failure is not proof that an accepted action ended.
+        if (!awaitingRevision.current || Date.now() >= awaitingRevision.current.deadline) {
+          awaitingRevision.current = null;
           setAwaitingAction(false);
         }
-      } finally {
-        if (!controller.signal.aborted) setLoading(false);
-      }
-    };
-    void fetchData();
+      },
+      onSettled: () => setLoading(false),
+    });
+    refreshRead.current = () => reads.refresh(true);
+    reads.refresh();
+    window.addEventListener("focus", reads.activityChanged);
+    window.addEventListener("online", reads.activityChanged);
+    window.addEventListener("offline", reads.activityChanged);
+    document.addEventListener("visibilitychange", reads.activityChanged);
     return () => {
-      controller.abort();
-      if (timer) clearTimeout(timer);
+      refreshRead.current = null;
+      reads.dispose();
+      window.removeEventListener("focus", reads.activityChanged);
+      window.removeEventListener("online", reads.activityChanged);
+      window.removeEventListener("offline", reads.activityChanged);
+      document.removeEventListener("visibilitychange", reads.activityChanged);
     };
-  }, [path, version, poll]);
-  useEffect(() => {
-    window.addEventListener("focus", refresh);
-    return () => window.removeEventListener("focus", refresh);
-  }, [refresh]);
+  }, [path, poll]);
   return { data, error, loading, awaitingAction, refresh, refreshAfterAction };
 }
 
@@ -135,10 +145,10 @@ export function Notice({
 }
 export function ErrorMessage({
   error,
-  retry,
+  autoRefresh = false,
 }: {
   error: Error | null;
-  retry?: () => void;
+  autoRefresh?: boolean;
 }) {
   if (!error) return null;
   return (
@@ -148,11 +158,7 @@ export function ErrorMessage({
       {error instanceof ApiError && error.requestId && (
         <small className="record-id">查詢識別碼：{error.requestId}</small>
       )}
-      {retry && (
-        <button className="workspace-button" onClick={retry}>
-          重新讀取
-        </button>
-      )}
+      {autoRefresh && <small>系統會自動重試讀取，連線恢復後更新。</small>}
     </div>
   );
 }

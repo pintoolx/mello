@@ -29,30 +29,55 @@ export function SessionGate({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const controller = new AbortController();
+    let retryNeeded = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const available = () => document.visibilityState !== "hidden" && navigator.onLine;
+    const scheduleRetry = (delay: number) => {
+      retryNeeded = true;
+      if (available()) timer = setTimeout(resume, delay);
+    };
+    const resume = () => {
+      if (!retryNeeded || !available() || controller.signal.aborted) return;
+      retryNeeded = false;
+      if (timer) clearTimeout(timer);
+      setVersion((value) => value + 1);
+    };
     const expire = () => {
+      retryNeeded = false;
+      if (timer) clearTimeout(timer);
       setState("anonymous");
       setError(new Error("登入已失效，請重新輸入存取碼。既有案件仍保留。"));
     };
     window.addEventListener(SESSION_EXPIRED, expire);
+    window.addEventListener("online", resume);
+    window.addEventListener("focus", resume);
+    document.addEventListener("visibilitychange", resume);
     void requestJson<{ authenticated: boolean; configured: boolean }>(
       "/api/session",
-      { signal: controller.signal },
+      { signal: AbortSignal.any([controller.signal, AbortSignal.timeout(15000)]) },
     )
       .then((result) => {
         if (controller.signal.aborted) return;
         setConfigured(result.configured);
         setState(result.authenticated ? "authenticated" : "anonymous");
         setError(null);
+        if (!result.configured) scheduleRetry(15000);
       })
       .catch((cause) => {
-        if (!controller.signal.aborted)
+        if (!controller.signal.aborted) {
           setError(
             cause instanceof Error ? cause : new Error("無法確認登入狀態"),
           );
+          scheduleRetry(15000);
+        }
       });
     return () => {
       controller.abort();
+      if (timer) clearTimeout(timer);
       window.removeEventListener(SESSION_EXPIRED, expire);
+      window.removeEventListener("online", resume);
+      window.removeEventListener("focus", resume);
+      document.removeEventListener("visibilitychange", resume);
     };
   }, [version]);
 
@@ -108,15 +133,12 @@ export function SessionGate({ children }: { children: ReactNode }) {
             <h1 id="session-title">登入採購工作區</h1>
             <p>使用管理員提供的存取碼，查看案件與操作付款。</p>
           </div>
-          <ErrorMessage
-            error={error}
-            retry={() => setVersion((value) => value + 1)}
-          />
+          <ErrorMessage error={error} autoRefresh={state === "loading" || !configured} />
           {state === "loading" ? (
             !error && <Notice title="正在確認登入狀態…" />
           ) : !configured ? (
             <Notice title="尚未設定登入環境">
-              請管理員設定伺服器存取碼與 session secret，再重新讀取。
+              請管理員設定伺服器存取碼與 session secret，完成後畫面會自動更新。
             </Notice>
           ) : (
             <form onSubmit={submit} className="session-form">
@@ -140,14 +162,6 @@ export function SessionGate({ children }: { children: ReactNode }) {
                 工作區存取碼: <span className="workspace-access-code">2aba8f994c42fc5ca58d0d23f52773ab</span>
               </p>
             </form>
-          )}
-          {!configured && (
-            <button
-              className="workspace-button"
-              onClick={() => setVersion((value) => value + 1)}
-            >
-              重新讀取
-            </button>
           )}
         </div>
       </section>

@@ -1,5 +1,4 @@
-import { MelloConsole } from "@/components/mello-console";
-
 export default function AppPage() {
-  return <MelloConsole />;
+  // The shared layout owns the console; this file only registers the route.
+  return null;
 }

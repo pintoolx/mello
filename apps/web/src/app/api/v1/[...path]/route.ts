@@ -27,10 +27,10 @@ async function proxy(request: NextRequest, context: Context) {
     const upstream = await fetch(new URL(`/api/v1/${path}${request.nextUrl.search}`, base), {
       method: request.method, headers, body: body || undefined, cache: "no-store", redirect: "error", signal: AbortSignal.timeout(30_000),
     });
-    if (!upstream.headers.get("content-type")?.includes("application/json")) return fail(502, "後端回應格式異常，請稍後重新整理狀態");
+    if (!upstream.headers.get("content-type")?.includes("application/json")) return fail(502, "後端回應格式異常，暫時無法取得狀態。");
     return NextResponse.json(await upstream.json(), { status: upstream.status,
       headers: { "cache-control": "no-store", "x-request-id": upstream.headers.get("x-request-id") ?? "" } });
-  } catch { return fail(502, "暫時無法連線後端；付款可能仍在處理，請重新整理既有任務，勿重複建立採購"); }
+  } catch { return fail(502, "暫時無法連線後端；付款可能仍在處理，請查看既有案件狀態，勿重複建立採購"); }
 }
 
 export const GET = proxy;
