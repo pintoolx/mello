@@ -434,7 +434,15 @@ export class PrismaCoreApiRepository implements CoreApiRepository {
       intent: purchase.task.intent,
       candidates: purchase.task.candidates,
       decisionSummary: purchase.task.decisionSummary,
-      selectedService: normalizedService(purchase.service),
+      selectedService: normalizedService({
+        ...purchase.service,
+        seller: {
+          ...purchase.service.seller,
+          // Registry wallets can rotate; historical evidence must keep the
+          // payee captured when this purchase was created.
+          payToAddress: purchase.payToAddress,
+        },
+      }),
       discoveryEvidence: purchase.discoveryEvidence,
       policyDecision: policyDecision ?? null,
       policySnapshot: purchase.policySnapshot,
