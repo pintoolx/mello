@@ -3,6 +3,7 @@ import {
   BASE_SEPOLIA_USDC,
   CompanyProfileInputSchema,
   CreateTaskSchema,
+  ServiceSelectionSchema,
   MELLO_NETWORK,
   MelloError,
   PolicyInputSchema,
@@ -346,6 +347,30 @@ export function createApiRouter(dependencies: CoreApiDependencies): Router {
   router.get("/tasks", async (request, response) => {
     const pagination = PaginationSchema.parse(request.query);
     sendJson(response, 200, await dependencies.repository.listTasks(pagination));
+  });
+
+  router.post("/tasks/:taskId/discover", async (request, response) => {
+    if (!dependencies.controls) return notFound("Procurement controls");
+    const { taskId } = TaskIdentifierParamsSchema.parse(request.params);
+    const operationRequestId = requestId(response);
+    await dependencies.controls.discover(taskId, (transaction) => dependencies.workflowJobs.enqueue({
+      kind: "RUN_TASK", aggregateId: taskId, payload: { taskId, requestId: operationRequestId },
+      maxAttempts: dependencies.config.WORKFLOW_MAX_ATTEMPTS,
+    }, transaction), operationRequestId);
+    sendJson(response, 202, { taskId, status: "PARSING" });
+  });
+
+  router.post("/tasks/:taskId/select", async (request, response) => {
+    if (!dependencies.controls) return notFound("Procurement controls");
+    const { taskId } = TaskIdentifierParamsSchema.parse(request.params);
+    const input = ServiceSelectionSchema.parse(request.body);
+    const operationRequestId = requestId(response);
+    const result = await dependencies.controls.selectService(taskId, input,
+      (transaction) => dependencies.workflowJobs.enqueue({
+        kind: "RUN_TASK", aggregateId: taskId, payload: { taskId, requestId: operationRequestId },
+        maxAttempts: dependencies.config.WORKFLOW_MAX_ATTEMPTS,
+      }, transaction), operationRequestId);
+    sendJson(response, result.deduplicated ? 200 : 202, { taskId, ...result });
   });
 
   router.post("/tasks/:taskId/run", async (request, response) => {

@@ -46,3 +46,14 @@ test("corrupt pending records are never silently discarded", () => {
     }),
   );
 });
+
+test("a lost create response preserves all four requirement combinations", () => {
+  for (const requiresTwInvoice of [true, false]) for (const requiresRegistryCertification of [true, false]) {
+    const input = { prompt: "信用報告，預算 0.10 USDC", requestKey: "survey-request-key-1",
+      requirements: { requiresTwInvoice, requiresRegistryCertification } };
+    assert.deepEqual(readPendingRequest({ getItem: () => JSON.stringify(input) }), input);
+  }
+  assert.throws(() => readPendingRequest({ getItem: () => JSON.stringify({
+    prompt: "信用報告", requestKey: "survey-request-key-1", requirements: { requiresTwInvoice: "false" },
+  }) }));
+});

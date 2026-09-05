@@ -16,6 +16,7 @@ enum TaskStatus {
   PARSING
   DISCOVERING
   EVALUATING
+  WAITING_SELECTION
   REJECTED
   AUTH_ANCHOR_PENDING
   PAYING
@@ -230,6 +231,8 @@ model TaskControl {
   requestHash             String   @db.VarChar(66)
   approvalLimitAtomic     String?  @db.VarChar(78)
   expectedPayTo           String?  @db.VarChar(42)
+  requirements            Json?
+  selectedService         Json?
   pendingTerms            Json?
   approvedTermsHash       String?  @db.VarChar(66)
   approvedAt              DateTime? @db.Timestamptz(3)

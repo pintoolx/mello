@@ -25,33 +25,35 @@ export function matchingBazaarResource(service: ServiceRecord, resource: BazaarR
 }
 
 export interface DiscoveryEvidence {
-  source: "cdp_bazaar";
+  source: "cdp_bazaar" | "local_registry";
   fetchedAt: string;
   partialResults: boolean;
   resource: string;
   resourceHash: string;
   serviceId: string;
   bindingHash: string;
-  verificationRevision: number;
-  verificationExpiresAt: string;
+  verificationRevision: number | null;
+  verificationExpiresAt: string | null;
+  requiresCertification?: boolean;
   amountAtomic: string;
 }
 
 export function assessDiscovery(
   service: ServiceRecord, verification: VerificationRecord | null | undefined,
-  result: BazaarResult, now = new Date(),
+  result: BazaarResult, now = new Date(), requiresCertification = true,
 ) {
   const review = verificationSummary(service, verification, now);
   const resource = result.resources.find((item) => matchingBazaarResource(service, item));
   const reasons: string[] = [];
-  if (review.status !== "VERIFIED") reasons.push(`VERIFICATION_${review.status}`);
+  if (requiresCertification && review.status !== "VERIFIED") reasons.push(`VERIFICATION_${review.status}`);
   if (!service.active) reasons.push("SERVICE_INACTIVE");
   if (!resource) reasons.push("BAZAAR_SERVICE_NOT_FOUND_OR_CHANGED");
-  const evidence: DiscoveryEvidence | null = reasons.length === 0 && resource && verification ? {
+  const evidence: DiscoveryEvidence | null = reasons.length === 0 && resource ? {
     source: "cdp_bazaar", fetchedAt: result.fetchedAt, partialResults: result.partialResults,
     resource: resource.resource, resourceHash: hashCanonicalJson(resource), serviceId: service.id,
-    bindingHash: review.bindingHash, verificationRevision: verification.revision,
-    verificationExpiresAt: verification.expiresAt.toISOString(), amountAtomic: service.priceAtomic,
+    bindingHash: review.bindingHash, verificationRevision: verification?.revision ?? null,
+    verificationExpiresAt: verification?.expiresAt.toISOString() ?? null, amountAtomic: service.priceAtomic,
+    requiresCertification,
   } : null;
   return { serviceId: service.id, verification: review, listed: Boolean(resource), reasonCodes: reasons, evidence };
 }
@@ -73,19 +75,41 @@ export class ServiceRegistry {
     });
   }
 
-  async discover() {
+  async discover(requiresCertification = true) {
     // Discovery is the candidate source; local rows only provide identity/trust.
     // Never send the purchase prompt or target company to this public catalog.
     const result = await this.bazaar.search({ query: "credit report" });
     const records = await this.records();
     const services = records.map(normalizeRegistryService);
-    const assessments = services.map((service, index) => assessDiscovery(service, records[index]?.verification, result, this.now()));
+    const assessments = services.map((service, index) => assessDiscovery(service, records[index]?.verification, result, this.now(), requiresCertification));
     return {
       source: result.source, fetchedAt: result.fetchedAt, partialResults: result.partialResults,
       discoveredResourceCount: result.resources.length, rejectedResourceCount: result.rejectedResourceCount,
       unregisteredResourceCount: result.resources.filter((resource) => !services.some((service) => matchingBazaarResource(service, resource))).length,
       services, assessments,
     };
+  }
+
+  async discoverLocal(requiresCertification: boolean) {
+    const records = await this.records();
+    const services = records.map(normalizeRegistryService);
+    const fetchedAt = this.now().toISOString();
+    const assessments = services.map((service, index) => {
+      const verification = verificationSummary(service, records[index]?.verification, this.now());
+      const reasonCodes: string[] = [];
+      if (!service.active) reasonCodes.push("SERVICE_INACTIVE");
+      if (requiresCertification && verification.status !== "VERIFIED") reasonCodes.push(`VERIFICATION_${verification.status}`);
+      const evidence: DiscoveryEvidence | null = reasonCodes.length ? null : {
+        source: "local_registry", fetchedAt, partialResults: false, resource: service.endpoint,
+        resourceHash: hashCanonicalJson(service), serviceId: service.id, bindingHash: verification.bindingHash,
+        verificationRevision: verification.revision, verificationExpiresAt: verification.expiresAt,
+        amountAtomic: service.priceAtomic, requiresCertification,
+      };
+      return { serviceId: service.id, verification, listed: service.active, reasonCodes, evidence };
+    });
+    return { source: "local_registry" as const, fetchedAt, partialResults: false,
+      discoveredResourceCount: services.length, rejectedResourceCount: 0, unregisteredResourceCount: 0,
+      services, assessments };
   }
 
   async verify(serviceId: string, input: VerifyServiceInput, requestId?: string) {
@@ -166,9 +190,10 @@ export class ServiceRegistry {
     if (!record) throw new MelloError("SERVICE_VERIFICATION_REQUIRED", "認證服務已不存在。", { statusCode: 409 });
     const service = normalizeRegistryService(record);
     const review = verificationSummary(service, record.verification, this.now());
-    if (review.status !== "VERIFIED" || !service.active) throw new MelloError("SERVICE_VERIFICATION_REQUIRED", "服務認證已失效或已停用；未釋出付款。", { statusCode: 409 });
+    const requiresCertification = evidence.requiresCertification !== false;
+    if ((requiresCertification && review.status !== "VERIFIED") || !service.active) throw new MelloError("SERVICE_VERIFICATION_REQUIRED", "服務認證已失效或已停用；未釋出付款。", { statusCode: 409 });
     if (evidence.serviceId !== serviceId || evidence.bindingHash !== review.bindingHash ||
-      evidence.verificationRevision !== review.revision || evidence.resource !== service.endpoint ||
+      (requiresCertification && evidence.verificationRevision !== review.revision) || evidence.resource !== service.endpoint ||
       BigInt(evidence.amountAtomic) !== BigInt(service.priceAtomic)) {
       throw new MelloError("SERVICE_BINDING_CHANGED", "服務、報價或認證版本已變更；請重新建立採購。", { statusCode: 409 });
     }
@@ -177,6 +202,7 @@ export class ServiceRegistry {
 
   async assertPurchasable(serviceId: string, evidence: DiscoveryEvidence): Promise<void> {
     const service = await this.assertCurrentBinding(this.prisma, serviceId, evidence);
+    if (evidence.source === "local_registry") return;
     const result = await this.bazaar.search({ endpoint: service.endpoint, payTo: service.payToAddress });
     if (!result.resources.some((resource) => matchingBazaarResource(service, resource))) {
       throw new MelloError("BAZAAR_SERVICE_NOT_FOUND", "Bazaar 已找不到原核准服務或付款條件已變更；未釋出付款。", { statusCode: 409 });
@@ -187,12 +213,16 @@ export class ServiceRegistry {
 
   private purchaseEvidence(value: unknown, required: boolean): DiscoveryEvidence | null {
     const raw = value as Partial<DiscoveryEvidence> | null;
-    if (raw?.source !== "cdp_bazaar") {
+    if (raw?.source !== "cdp_bazaar" && raw?.source !== "local_registry") {
       if (required) throw new MelloError("SERVICE_VERIFICATION_REQUIRED", "舊案件沒有 Bazaar 認證證據，不能在 Bazaar 模式補付款。", { statusCode: 409 });
       return null;
     }
+    if (required && raw.source !== "cdp_bazaar") {
+      throw new MelloError("SERVICE_VERIFICATION_REQUIRED", "此案件沒有 Bazaar 探索證據，請重新建立採購。", { statusCode: 409 });
+    }
     if (typeof raw.resource !== "string" || typeof raw.bindingHash !== "string" || typeof raw.amountAtomic !== "string" ||
-      !/^\d{1,78}$/.test(raw.amountAtomic) || typeof raw.verificationRevision !== "number") {
+      !/^\d{1,78}$/.test(raw.amountAtomic) ||
+      (raw.requiresCertification !== false && typeof raw.verificationRevision !== "number")) {
       throw new MelloError("SERVICE_VERIFICATION_REQUIRED", "Bazaar 認證證據不完整。", { statusCode: 409 });
     }
     return raw as DiscoveryEvidence;
@@ -217,7 +247,7 @@ export class ServiceRegistry {
         await this.assertCurrentBinding(tx, purchase.serviceId, evidence);
         await appendAuditEvent(tx, {
           aggregateType: "PURCHASE", aggregateId: purchaseId, purchaseId, taskId: purchase.taskId, requestId,
-          eventType: "SERVICE_VERIFICATION_RELEASE_CHECKED", stage: "PAYING",
+          eventType: evidence.requiresCertification === false ? "SERVICE_BINDING_RELEASE_CHECKED" : "SERVICE_VERIFICATION_RELEASE_CHECKED", stage: "PAYING",
           payload: { bindingHash: evidence.bindingHash, verificationRevision: evidence.verificationRevision,
             boundary: "PAYMENT_RELEASE_PERMIT", inFlightPaymentsAreNotCancelled: true },
         });

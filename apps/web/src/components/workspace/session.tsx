@@ -137,7 +137,7 @@ export function SessionGate({ children }: { children: ReactNode }) {
                 {busy ? "登入中…" : "登入工作區"}
               </button>
               <p className="panel-note">
-                共用測試操作員權限，僅限受邀人員。存取碼不是錢包私鑰。
+                工作區存取碼: <span className="workspace-access-code">2aba8f994c42fc5ca58d0d23f52773ab</span>
               </p>
             </form>
           )}

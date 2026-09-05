@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useRef, useState } from "react";
+import { ServiceSurvey } from "./service-survey";
+import { visibleSurveyCandidates } from "../../lib/service-survey";
 import {
   api,
   dateTime,
@@ -47,13 +49,13 @@ export function TaskDetail({
   const task = resource.data;
   const actionBusy =
     busy || resource.awaitingAction || running(task?.status ?? "");
-  async function action(path: string) {
+  async function action(path: string, body?: unknown) {
     if (pending.current) return;
     pending.current = true;
     setBusy(true);
     setError(null);
     try {
-      await api(path, { method: "POST" });
+      await api(path, { method: "POST", ...(body ? { body: JSON.stringify(body) } : {}) });
       if (task) resource.refreshAfterAction(task.updatedAt);
     } catch (cause) {
       setError(cause instanceof Error ? cause : new Error("操作未完成"));
@@ -75,6 +77,9 @@ export function TaskDetail({
         {resource.loading && <Notice title="正在讀取案件…" />}
       </>
     );
+  const selectionSubmitted = !!task.control?.selectedService;
+  const candidates = visibleSurveyCandidates(task.candidates ?? [], task.control?.requirements);
+  const step = task.purchase || selectionSubmitted ? 3 : task.status === "WAITING_SELECTION" ? 2 : task.status === "CREATED" ? 0 : 1;
   return (
     <>
       <Link href="/app" className="back-link">
@@ -92,17 +97,32 @@ export function TaskDetail({
         {task.status === "CREATED" && (
           <button
             className="workspace-button primary"
-            disabled={actionBusy || frozen}
-            onClick={() => void action(`/tasks/${taskId}/run`)}
+            disabled={actionBusy || (selectionSubmitted && frozen)}
+            onClick={() => void action(`/tasks/${taskId}/${selectionSubmitted ? "run" : "discover"}`)}
           >
-            {actionBusy ? "送出中…" : "送出採購"}
+            {actionBusy ? "處理中…" : selectionSubmitted ? "繼續採購處理" : "開始探索"}
           </button>
         )}
         <button className="workspace-button" onClick={resource.refresh}>
           重新整理
         </button>
       </PageHeading>
+      <ol className="procurement-steps" aria-label="採購流程">
+        {["建立申請", "Agent 探索服務", "人工選用服務", "採購與付款"].map((label, index) => (
+          <li key={label} className={index <= step ? "is-active" : undefined} aria-current={index === step ? "step" : undefined}>
+            <span>{index + 1}</span>{label}
+          </li>
+        ))}
+      </ol>
       <ErrorMessage error={error || resource.error} retry={resource.refresh} />
+      {task.status === "WAITING_SELECTION" && (
+        <ServiceSurvey key={task.updatedAt} task={task} busy={actionBusy} frozen={frozen}
+          onSelect={(selection) => void action(`/tasks/${taskId}/select`, selection)}
+          onExplore={() => void action(`/tasks/${taskId}/discover`)} />
+      )}
+      {task.status === "FAILED" && !task.purchase && (
+        <button className="workspace-button" disabled={actionBusy} onClick={() => void action(`/tasks/${taskId}/discover`)}>重新探索服務</button>
+      )}
       {task.status === "ACTION_REQUIRED" &&
         task.error?.code === "APPROVAL_REQUIRED" &&
         task.control?.pendingTerms && (
@@ -143,15 +163,6 @@ export function TaskDetail({
             </div>
           </section>
         )}
-      {task.error?.code === "PAYMENTS_FROZEN" && !task.purchase && !frozen && (
-        <button
-          className="workspace-button"
-          disabled={actionBusy}
-          onClick={() => void action(`/tasks/${taskId}/run`)}
-        >
-          繼續原申請
-        </button>
-      )}
       {task.error && (
         <div className="case-alert" role="status">
           <strong>
@@ -253,11 +264,13 @@ export function TaskDetail({
                   {task.taskId}
                 </Field>
                 <Field label="服務類型">企業信用風險報告</Field>
+                <Field label="發票要求">{(task.control?.requirements?.requiresTwInvoice ?? task.intent?.requiresTwInvoice) ? "需要發票" : "不限制"}</Field>
+                <Field label="Mello Registry 認證">{task.control?.requirements?.requiresRegistryCertification ? "需要有效認證" : "不限制"}</Field>
                 <Field label="發票統一編號" mono>
-                  {task.intent?.buyerBusinessId ?? "送出後由公司設定帶入"}
+                  {task.intent?.buyerBusinessId ?? "探索時由公司設定帶入"}
                 </Field>
                 <Field label="成本中心">
-                  {task.intent?.costCenter ?? "送出後由公司設定帶入"}
+                  {task.intent?.costCenter ?? "探索時由公司設定帶入"}
                 </Field>
               </dl>
               {task.intent?.usedDemoDefaultTarget && (
@@ -267,7 +280,7 @@ export function TaskDetail({
               )}
               {task.status === "CREATED" && (
                 <p className="panel-note">
-                  確認需求後，點選右上方「送出採購」。系統將依公司政策評估供應商；通過後才會付款。
+                  {selectionSubmitted ? "已選用服務，等待付款前檢查。" : "點選「開始探索」，Agent 會先比較服務的報價、發票與認證。由你選用服務後，再送出採購。"}
                 </p>
               )}
             </>
@@ -276,9 +289,9 @@ export function TaskDetail({
             <>
               <div className="section-heading">
                 <h2>供應商評估</h2>
-                <span>{task.candidates?.length ?? 0} 家候選</span>
+                <span>{candidates.length} 個候選服務</span>
               </div>
-              {task.candidates?.length ? (
+              {candidates.length ? (
                 <div className="table-scroll">
                   <table className="records-table">
                     <thead>
@@ -286,11 +299,12 @@ export function TaskDetail({
                         <th>供應商</th>
                         <th>報價</th>
                         <th>台灣發票</th>
+                        <th>Mello Registry 認證</th>
                         <th>評估結果</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {task.candidates.map((candidate) => {
+                      {candidates.map((candidate) => {
                         const selected =
                           task.purchase?.selectedService.id ===
                           (candidate.serviceId ?? candidate.id);
@@ -311,9 +325,10 @@ export function TaskDetail({
                             </td>
                             <td>
                               {candidate.supportsTwInvoice
-                                ? "支援測試介接"
-                                : "不支援"}
+                                ? "有（Demo 測試）"
+                                : "無"}
                             </td>
+                            <td>{candidate.verificationStatus === "VERIFIED" ? "有" : "無"}</td>
                             <td>
                               <strong
                                 className={
@@ -340,8 +355,8 @@ export function TaskDetail({
                   </table>
                 </div>
               ) : (
-                <Notice title="尚無供應商評估">
-                  送出採購後，這裡會保存候選報價及選用依據。
+                <Notice title={task.status === "WAITING_SELECTION" ? "沒有符合條件的服務" : "尚無供應商評估"}>
+                  {task.status === "WAITING_SELECTION" ? "可重新探索，或建立另一筆申請調整服務條件。" : "開始探索後，這裡會保存候選報價、發票及認證能力。"}
                 </Notice>
               )}
               {task.decisionSummary && (
@@ -467,11 +482,12 @@ function PurchaseRecords({
               {purchase.selectedService.id}
             </Field>
             <Field label="服務發現來源">
-              {purchase.discoveryEvidence?.source === "cdp_bazaar" ? "CDP Bazaar" : "本地 Demo／歷史案件"}
+              {purchase.discoveryEvidence?.source === "cdp_bazaar" ? "CDP Bazaar" : purchase.discoveryEvidence?.source === "local_registry" ? "Mello Registry 本地目錄" : "本地 Demo／歷史案件"}
             </Field>
             {purchase.discoveryEvidence && <>
-              <Field label="當時認證版本">{purchase.discoveryEvidence.verificationRevision}</Field>
-              <Field label="Bazaar 查詢時間">{dateTime(purchase.discoveryEvidence.fetchedAt)}</Field>
+              <Field label="本次認證要求">{purchase.discoveryEvidence.requiresCertification === false ? "不限制" : "需要有效認證"}</Field>
+              <Field label="當時認證版本">{purchase.discoveryEvidence.verificationRevision ?? "無認證紀錄"}</Field>
+              <Field label="服務探索時間">{dateTime(purchase.discoveryEvidence.fetchedAt)}</Field>
             </>}
             <Field label="服務報價">
               {money(purchase.expectedAmountAtomic)} USDC

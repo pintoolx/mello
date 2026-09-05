@@ -545,6 +545,142 @@ video:focus-visible {
   gap: 24px;
   align-items: start;
 }
+.workspace-access-code {
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+.service-requirements {
+  border: 1px solid #d4dcd5;
+  padding: 16px;
+}
+.service-requirements legend {
+  padding: 0 6px;
+  font-size: 13px;
+  font-weight: 500;
+}
+.requirement-choice {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 10px 0;
+  cursor: pointer;
+}
+.workspace :is(.requirement-choice, .survey-option) input {
+  width: 18px;
+  height: 18px;
+  min-height: 18px;
+  padding: 0;
+  margin: 3px 0 0;
+  flex-shrink: 0;
+  accent-color: #315a46;
+}
+.requirement-choice strong,
+.requirement-choice small {
+  display: block;
+}
+.requirement-choice small,
+.service-requirements > p,
+.survey-option small,
+.survey-footer p {
+  color: #617269;
+  font-size: 12px;
+  margin: 4px 0 0;
+}
+.procurement-steps {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  list-style: none;
+  margin: 0 0 24px;
+  padding: 0;
+  gap: 12px;
+}
+.procurement-steps li {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  border-top: 2px solid #d4dcd5;
+  padding: 12px 0 0;
+  font-size: 12px;
+  color: #65766d;
+}
+.procurement-steps li.is-active {
+  border-color: #426f53;
+  color: #315a46;
+}
+.procurement-steps li span {
+  font-variant-numeric: tabular-nums;
+}
+.survey-panel {
+  margin-bottom: 24px;
+}
+.survey-intro {
+  padding: 16px 24px;
+}
+.survey-intro p {
+  margin: 0 0 8px;
+}
+.survey-filters,
+.survey-capabilities {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  font-size: 12px;
+}
+.survey-filters {
+  margin: 12px 0;
+  color: #526957;
+}
+.survey-capabilities .muted-text { color: #65766d; }
+.survey-options {
+  border: 0;
+  padding: 0 24px 24px;
+  display: grid;
+  gap: 12px;
+}
+.survey-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 18px;
+  border: 1px solid #c9d3ca;
+  background: #fffefa;
+  cursor: pointer;
+}
+.survey-option:hover,
+.survey-option.is-selected {
+  border-color: #426f53;
+  background: #f0f6ed;
+}
+.survey-option.is-unavailable {
+  background: #f2f3ef;
+  cursor: default;
+}
+.survey-option-content {
+  min-width: 0;
+  flex: 1;
+  display: grid;
+  gap: 8px;
+}
+.survey-option-heading {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+}
+.survey-option-heading > span {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.survey-footer {
+  flex-wrap: wrap;
+}
+@media (max-width: 600px) {
+  .procurement-steps { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .survey-intro { padding: 16px; }
+  .survey-options { padding: 0 16px 16px; }
+  .survey-option { padding: 14px; }
+  .survey-footer .page-actions { width: 100%; }
+}
 .form-fields {
   padding: 26px 28px;
   display: grid;

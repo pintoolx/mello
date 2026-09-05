@@ -108,11 +108,24 @@ export const PolicyDecisionSchema = z.object({
 });
 export type PolicyDecision = z.infer<typeof PolicyDecisionSchema>;
 
+export const TaskRequirementsSchema = z.object({
+  requiresTwInvoice: z.boolean(),
+  requiresRegistryCertification: z.boolean(),
+}).strict();
+export type TaskRequirements = z.infer<typeof TaskRequirementsSchema>;
+
+export const ServiceSelectionSchema = z.object({
+  serviceId: z.string().min(1).max(64),
+  selectionHash: Bytes32Schema,
+}).strict();
+export type ServiceSelection = z.infer<typeof ServiceSelectionSchema>;
+
 export const CreateTaskSchema = z.object({
   prompt: z.string().trim().min(3).max(2_000),
   requestKey: z.string().regex(/^[a-zA-Z0-9_-]{16,128}$/).optional(),
   approvalLimitAtomic: AtomicAmountSchema.max(78).optional(),
   expectedPayTo: EvmAddressSchema.optional(),
+  requirements: TaskRequirementsSchema.optional(),
 });
 
 export const Erc3009AuthorizationRecordSchema = z.object({

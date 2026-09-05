@@ -153,14 +153,14 @@ export class PrismaWorkflowJobRepository implements WorkflowJobStore {
     private readonly now: () => Date = () => new Date(),
   ) {}
 
-  async enqueue(input: EnqueueWorkflowJobInput): Promise<{ id: string }> {
+  async enqueue(input: EnqueueWorkflowJobInput, existingTransaction?: Prisma.TransactionClient): Promise<{ id: string }> {
     const maxAttempts = input.maxAttempts ?? 3;
     if (!Number.isInteger(maxAttempts) || maxAttempts < 1 || maxAttempts > 3) {
       throw new RangeError("Workflow job maxAttempts must be between 1 and 3");
     }
     const id = randomUUID();
     const now = this.now();
-    return this.prisma.$transaction(async (transaction) => {
+    const enqueue = async (transaction: Prisma.TransactionClient) => {
       await acquireWorkflowQueueSharedLock(transaction);
       await validateAggregateForEnqueue(transaction, input);
       const inserted = await transaction.$queryRaw<Array<{ id: string }>>(Prisma.sql`
@@ -206,7 +206,8 @@ export class PrismaWorkflowJobRepository implements WorkflowJobStore {
         },
       });
       return { id };
-    });
+    };
+    return existingTransaction ? enqueue(existingTransaction) : this.prisma.$transaction(enqueue);
   }
 
   async hasActiveJobs(): Promise<boolean> {

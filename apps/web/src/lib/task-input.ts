@@ -5,6 +5,7 @@ export interface TaskInput {
   requestKey: string;
   approvalLimitAtomic?: string;
   expectedPayTo?: string;
+  requirements?: { requiresTwInvoice: boolean; requiresRegistryCertification: boolean };
 }
 
 export function atomicAmount(value: string): string {
@@ -30,6 +31,9 @@ export function readPendingRequest(
       typeof input.requestKey !== "string" ||
       input.requestKey.length < 16 ||
       input.requestKey.length > 128 ||
+      (input.requirements !== undefined &&
+        (typeof input.requirements?.requiresTwInvoice !== "boolean" ||
+          typeof input.requirements?.requiresRegistryCertification !== "boolean")) ||
       (input.approvalLimitAtomic !== undefined &&
         (typeof input.approvalLimitAtomic !== "string" ||
           !/^\d{1,78}$/.test(input.approvalLimitAtomic))) ||
@@ -41,6 +45,10 @@ export function readPendingRequest(
     return {
       prompt: input.prompt,
       requestKey: input.requestKey,
+      ...(input.requirements !== undefined ? { requirements: {
+        requiresTwInvoice: input.requirements.requiresTwInvoice,
+        requiresRegistryCertification: input.requirements.requiresRegistryCertification,
+      } } : {}),
       ...(input.approvalLimitAtomic !== undefined
         ? { approvalLimitAtomic: input.approvalLimitAtomic }
         : {}),
