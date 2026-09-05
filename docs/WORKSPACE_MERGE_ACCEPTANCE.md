@@ -32,3 +32,5 @@ Playwright 使用隔離 PostgreSQL 與本地 Sellers，`payment=mock`、`anchor=
 本機 artifacts：`/tmp/mello-workspace-merge/report.json`、同目錄截圖，以及 `/tmp/mello-visual-qa/report.json`。暫存檔可能被系統清理，驗收結論由本文件保留。
 
 本次只整合、驗證與合併程式碼，未執行 Railway 重部署、合約部署或測試網支出。既有 Base Sepolia 交易證據屬先前部署，見 [歷史驗收](DEMO_ACCEPTANCE.md)，不能當成本次新版前端的 live 驗收。
+
+後續另經批准執行新版工作區重部署、新合約與真實 Base Sepolia 測試，結果獨立記錄於 [新版 live 驗收](WORKSPACE_LIVE_ACCEPTANCE.md)，不覆蓋本次合併階段的歷史紀錄。

@@ -2,7 +2,9 @@
 
 Mello 是台灣企業的 Agent Purchase-to-Pay 控制層。`apps/web` 是企業採購主系統，已串接 `apps/api` 的採購 workflow、PostgreSQL、付款、發票與稽核紀錄。`apps/docs` 是完全獨立的文件站，取代原本的官網。付款依後端環境使用 mock 或 testnet；正式電子發票 adapter 尚未實作。
 
-[先前 Railway / Base Sepolia 驗收與交易證據](docs/DEMO_ACCEPTANCE.md)（舊版控制台的部署紀錄；本次新版工作區合併不代表已重新部署）。
+[目前 Railway / Base Sepolia 實測與交易證據](docs/WORKSPACE_LIVE_ACCEPTANCE.md)：新版工作區已重新部署，兩筆合計 0.10 Test USDC 的真實付款與四筆存證通過驗證。信用報告與發票仍為 Demo。[舊版控制台紀錄](docs/DEMO_ACCEPTANCE.md) 另行保留。
+
+[開啟主系統](https://web-production-158a1.up.railway.app/app) · [獨立文件站](https://docs-production-8a88.up.railway.app)
 
 [新版工作區整合驗收](docs/WORKSPACE_MERGE_ACCEPTANCE.md) · [前端欄位／狀態／endpoint 對照](apps/api/docs/FRONTEND_INTEGRATION.md)
 
@@ -105,7 +107,7 @@ python3 apps/web/scripts/workspace-e2e.py
 npm test
 ```
 
-`workspace-e2e.py` 只允許本地 mock，保留兩筆成功採購、低預算與地址不符的拒絕案件，涵蓋登入／CSRF、付款凍結、人工核准、發票重試不重付、建立回應遺失後找回原單、session 失效與 375／768／1280 px。只在斷線案例中攔截已實際保存的 create 回應，不偽造付款結果。`demo-e2e.py` 僅保留供先前 Railway 舊版控制台驗收，不適用新版頁面。
+`workspace-e2e.py` 預設只允許本地 mock，保留兩筆成功採購、低預算與地址不符的拒絕案件，涵蓋登入／CSRF、付款凍結、人工核准、發票重試不重付、建立回應遺失後找回原單、session 失效與 375／768／1280 px。只在斷線案例中攔截已實際保存的 create 回應，不偽造付款結果。明確批准的 Base Sepolia `--live` 模式、兩筆合計 0.10 Test USDC 的限制與只讀鏈上驗證見 [部署驗收說明](docs/RAILWAY.md#explicitly-approved-live-acceptance)。`demo-e2e.py` 僅保留供先前 Railway 舊版控制台驗收，不適用新版頁面。
 
 ## Backend teammate workflow
 
