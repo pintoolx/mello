@@ -102,6 +102,10 @@ with sync_playwright() as p:
             page.screenshot(path=str(output / f"layout-{width}.png"), full_page=True)
             print(json.dumps(page.evaluate("({width:innerWidth,scrollWidth:document.documentElement.scrollWidth,offenders:[...document.querySelectorAll('body > *,main > *')].filter(e=>e.getBoundingClientRect().right>innerWidth).map(e=>({tag:e.tagName,class:e.className,width:e.getBoundingClientRect().width}))})")), flush=True)
             assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth"), f"horizontal page overflow at {width}px"
+        assert not report["pageErrors"], report["pageErrors"]
+        report["ok"] = True
+        check("read-only deployed layout and existing evidence at all three viewports")
+        (output / "layout-report.json").write_text(json.dumps(report, ensure_ascii=False, indent=2))
         context.close()
         browser.close()
         raise SystemExit(0)

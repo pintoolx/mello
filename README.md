@@ -2,6 +2,8 @@
 
 Mello 是台灣企業的 Agent Purchase-to-Pay 控制層。`apps/web` 沿用現有 Next.js 視覺，透過有 session 驗證的同源 BFF 串接 `apps/api` 的採購 workflow、PostgreSQL、x402 與稽核後端。付款支援 Base Sepolia Test USDC；發票仍為明確標示的 DEMO，正式電子發票 adapter 尚未實作。
 
+[線上測試操作台](https://web-production-158a1.up.railway.app/app) · [Railway / Base Sepolia 驗收與交易證據](docs/DEMO_ACCEPTANCE.md)
+
 ## Repository structure
 
 ```text
