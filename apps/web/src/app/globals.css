@@ -51,7 +51,10 @@ video:focus-visible {
 }
 /* Product workspace: quiet, document-oriented enterprise software. */
 .workspace {
-  min-height: 100vh;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   background: #f1f2ef;
   color: #253440;
   font-size: 14px;
@@ -66,12 +69,12 @@ video:focus-visible {
 }
 .workspace-header {
   height: 78px;
+  flex-shrink: 0;
   padding: 0 30px;
   display: flex;
   align-items: center;
   gap: 24px;
   background: #fafbf7;
-  border-top: 4px solid #25435b;
   border-bottom: 1px solid #bfc7c7;
 }
 .workspace-brand {
@@ -90,33 +93,74 @@ video:focus-visible {
   width: 108px;
   height: auto;
 }
-.workspace-organization {
-  margin-left: auto;
+.workspace-nav-top {
   display: flex;
   align-items: center;
-  gap: 12px;
-  font-size: 13px;
-  font-weight: 600;
+  justify-content: flex-end;
+  margin-bottom: 10px;
 }
-.workspace-organization small {
-  display: block;
-  font-size: 11px;
-  color: #748087;
-  font-weight: 400;
-}
-.organization-mark {
+.workspace-nav-toggle {
   display: grid;
   place-items: center;
-  width: 33px;
-  height: 33px;
-  background: #e7ebe6;
-  border: 1px solid #c2cbc4;
-  color: #556853;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #5d6d63;
+}
+.workspace-nav-toggle:hover {
+  background: #f0f2ec;
+  border-color: #c2cbc4;
+  color: #22425b;
+}
+/* 登出沿用品牌字標的黑，hover 轉成品牌綠，跟頭貼的黑底綠貓同一組。 */
+.workspace-header-action {
+  margin-left: auto;
+  min-height: 36px;
+  padding: 7px 18px;
+  border: 1px solid #111111;
+  background: #111111;
+  color: #fafbf7;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+.workspace-header-action:hover {
+  background: var(--green-bright);
+  border-color: var(--green-bright);
+  color: #111111;
+}
+.workspace-header-action:disabled {
+  opacity: 0.45;
 }
 .workspace-layout {
+  flex: 1;
+  min-height: 0;
   display: grid;
   grid-template-columns: 214px minmax(0, 1fr);
-  min-height: calc(100vh - 78px);
+  transition: grid-template-columns 160ms ease;
+}
+.workspace-layout[data-nav="closed"] {
+  grid-template-columns: 60px minmax(0, 1fr);
+}
+.workspace-layout[data-nav="closed"] .workspace-nav-top {
+  justify-content: center;
+}
+.workspace-layout[data-nav="closed"] .nav-label,
+.workspace-layout[data-nav="closed"] .workspace-environment {
+  display: none;
+}
+.workspace-layout[data-nav="closed"] .workspace-sidebar {
+  padding-inline: 10px;
+}
+.workspace-layout[data-nav="closed"] .workspace-sidebar nav a {
+  justify-content: center;
+  padding-inline: 0;
+}
+.workspace-layout[data-nav="closed"] .workspace-sidebar nav a[aria-current] {
+  border-left-width: 1px;
+  padding-left: 0;
 }
 .workspace-sidebar {
   display: flex;
@@ -124,6 +168,8 @@ video:focus-visible {
   background: #e8ebe6;
   border-right: 1px solid #c3cbc7;
   padding: 28px 14px 20px;
+  min-height: 0;
+  overflow-y: auto;
 }
 .nav-caption {
   display: block;
@@ -186,6 +232,8 @@ video:focus-visible {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
 }
 .workspace-breadcrumb {
   padding: 14px 34px;
@@ -203,13 +251,6 @@ video:focus-visible {
   max-width: 1540px;
   padding: 30px 34px 64px;
   margin: 0 auto;
-}
-.workspace-footer {
-  margin-top: auto;
-  padding: 16px 34px;
-  color: #7c8681;
-  font-size: 11px;
-  border-top: 1px solid #d9ded7;
 }
 .page-heading {
   display: flex;
@@ -544,6 +585,41 @@ video:focus-visible {
   grid-template-columns: minmax(0, 1fr) 290px;
   gap: 24px;
   align-items: start;
+}
+.settings-profile {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 18px 22px;
+  margin-bottom: 24px;
+  background: #fafbf7;
+  border: 1px solid #c8d0c9;
+}
+.settings-avatar {
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: #111111;
+  overflow: hidden;
+}
+.settings-avatar img {
+  display: block;
+  width: 34px;
+  height: auto;
+}
+.settings-profile h2 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 600;
+  color: #22354a;
+}
+.settings-profile p {
+  margin: 3px 0 0;
+  font-size: 12px;
+  color: #6f7d75;
 }
 .settings-layout {
   display: grid;
@@ -1081,6 +1157,21 @@ video:focus-visible {
   }
 }
 @media (max-width: 760px) {
+  /* 手機恢復整頁捲動；收合功能只在桌機提供。 */
+  .workspace {
+    height: auto;
+    overflow: visible;
+  }
+  .workspace-sidebar,
+  .workspace-main {
+    overflow-y: visible;
+  }
+  .workspace-nav-toggle {
+    display: none;
+  }
+  .workspace-nav-top {
+    display: none;
+  }
   .workspace-header {
     height: 68px;
     padding: 0 16px;
@@ -1088,16 +1179,6 @@ video:focus-visible {
   }
   .workspace-brand > div > img {
     width: 85px;
-  }
-  .organization-mark {
-    display: none;
-  }
-  .workspace-organization {
-    font-size: 11px;
-    text-align: right;
-  }
-  .workspace-organization small {
-    font-size: 10px;
   }
   .workspace-layout {
     display: block;
@@ -1238,9 +1319,6 @@ video:focus-visible {
   .audit-events li {
     grid-template-columns: minmax(0, 1fr);
     gap: 5px;
-  }
-  .workspace-footer {
-    padding: 15px 18px;
   }
 }
 

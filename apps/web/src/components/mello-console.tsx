@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { MelloLogo } from "./mello-logo";
@@ -59,6 +60,7 @@ export function MelloConsole() {
 
 function Workspace() {
   const pathname = usePathname();
+  const [navOpen, setNavOpen] = useState(true);
   const session = useSession();
   const settings = useResource<Settings>("/settings");
   const controls = useResource<Control>("/controls");
@@ -110,37 +112,39 @@ function Workspace() {
         >
           <MelloLogo light={false} />
         </Link>
-        <div className="workspace-organization">
-          <span className="organization-mark" aria-hidden="true">
-            企
-          </span>
-          <span>
-            {settings.data?.company?.legalName ?? "企業工作區"}
-            <small>
-              {settings.data?.company?.defaultCostCenter ?? "Purchase-to-Pay"}
-            </small>
-          </span>
-        </div>
         <button
-          className="workspace-button"
+          className="workspace-button workspace-header-action"
           disabled={session.busy}
           onClick={session.logout}
         >
           {session.busy ? "登出中…" : "登出"}
         </button>
       </header>
-      <div className="workspace-layout">
-        <aside className="workspace-sidebar">
-          <p className="nav-caption">工作區</p>
+      <div className="workspace-layout" data-nav={navOpen ? "open" : "closed"}>
+        <aside className="workspace-sidebar" id="workspace-nav">
+          <div className="workspace-nav-top">
+            <button
+              className="workspace-nav-toggle"
+              type="button"
+              aria-expanded={navOpen}
+              aria-label={navOpen ? "收合工作區選單" : "展開工作區選單"}
+              onClick={() => setNavOpen((open) => !open)}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true">
+                <path d="M4 6h16M4 12h16M4 18h16" strokeLinecap="round" />
+              </svg>
+            </button>
+          </div>
           <nav aria-label="工作區導覽">
             {navigation.map((item) => (
               <Link
                 key={item.href}
                 href={item.href}
+                title={item.title}
                 aria-current={section.href === item.href ? "page" : undefined}
               >
                 <NavIcon name={item.icon} />
-                {item.title}
+                <span className="nav-label">{item.title}</span>
               </Link>
             ))}
           </nav>
@@ -204,9 +208,6 @@ function Workspace() {
             )}
             {page}
           </div>
-          <footer className="workspace-footer">
-            Mello · 採購、付款與憑證，集中留存。
-          </footer>
         </main>
       </div>
     </div>

@@ -64,6 +64,11 @@ summary:focus-visible {
   align-items: center;
   gap: 18px;
 }
+.docs-mark {
+  display: block;
+  height: 26px;
+  width: auto;
+}
 .docs-brand span {
   border-left: 1px solid #cdd5c7;
   padding-left: 18px;
@@ -399,6 +404,9 @@ code {
   }
   .docs-brand {
     font-size: 22px;
+  }
+  .docs-mark {
+    height: 22px;
   }
   .docs-brand span {
     font-size: 12px;

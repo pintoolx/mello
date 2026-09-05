@@ -32,8 +32,9 @@ export function DocumentPage({ document }: { document: Document }) {
         跳至文件內容
       </a>
       <header className="docs-header">
-        <Link href="/" className="docs-brand">
-          Mello <span>文件</span>
+        <Link href="/" className="docs-brand" aria-label="Mello 文件">
+          <img className="docs-mark" src="/brand/mello-mark.svg" alt="" width={30} height={26} />
+          <span>文件</span>
         </Link>
         <span className="docs-edition">產品與技術文件</span>
       </header>

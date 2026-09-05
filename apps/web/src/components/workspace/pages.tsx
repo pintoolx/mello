@@ -602,11 +602,6 @@ export function PurchaseList({ invoices = false }: { invoices?: boolean }) {
           />
         )}
       </section>
-      {invoices && (
-        <p className="page-footnote">
-          SANDBOX · 測試發票僅供介接與流程驗證，不具正式發票效力。
-        </p>
-      )}
     </>
   );
 }

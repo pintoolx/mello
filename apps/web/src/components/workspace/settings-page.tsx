@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { api, money, type Company, type Health, type Settings } from "../../lib/core-api";
 import { companyFields, creditBalanceAtomic } from "../../lib/settings";
@@ -12,6 +13,7 @@ export function SettingsPage({ resource, health }: {
   return (
     <>
       <PageHeading title="設定" description="管理公司基本資訊、開立發票資料與可用餘額。" />
+      {resource.data?.company && <CompanyProfile company={resource.data.company} />}
       <div className="settings-layout">
         {resource.data?.company ? (
           <CompanyForm company={resource.data.company} onSaved={resource.refresh} />
@@ -23,6 +25,20 @@ export function SettingsPage({ resource, health }: {
         <Credit health={health.error ? null : health.data} loading={health.loading} />
       </div>
     </>
+  );
+}
+
+function CompanyProfile({ company }: { company: Company }) {
+  return (
+    <section className="settings-profile" aria-label="公司識別">
+      <span className="settings-avatar" aria-hidden="true">
+        <Image src="/brand/mello-cat-green.svg" alt="" width={34} height={29} />
+      </span>
+      <div>
+        <h2>{company.legalName}</h2>
+        <p>統一編號 {company.businessId}</p>
+      </div>
+    </section>
   );
 }
 
