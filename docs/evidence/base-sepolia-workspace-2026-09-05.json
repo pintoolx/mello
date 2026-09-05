@@ -1,6 +1,5 @@
 {
   "schemaVersion": 1,
-  "releaseSourceCommit": "438c4abb482eca2f2b7737ac5f65f0b990cb18a6",
   "webUrl": "https://web-production-158a1.up.railway.app",
   "docsUrl": "https://docs-production-8a88.up.railway.app",
   "scope": "Real Base Sepolia x402 Test USDC payments and on-chain audit anchors. Credit reports and invoices remain Demo.",
@@ -12,31 +11,38 @@
         "name": "api",
         "serviceId": "e4d7966c-20ba-4191-ae14-0c4a5ca899f7",
         "deploymentId": "39cc0507-4220-4ff0-bd46-e3773a9c7f93",
-        "status": "SUCCESS"
+        "status": "SUCCESS",
+        "sourceCommit": "438c4abb482eca2f2b7737ac5f65f0b990cb18a6"
       },
       {
         "name": "seller-a",
         "serviceId": "135bf31f-2766-4642-877c-b2e6d868e669",
         "deploymentId": "98f169a4-8ef0-4727-9770-8312e8c8dafa",
-        "status": "SUCCESS"
+        "status": "SUCCESS",
+        "sourceCommit": "438c4abb482eca2f2b7737ac5f65f0b990cb18a6"
       },
       {
         "name": "seller-b",
         "serviceId": "5aad400c-c567-4b78-8440-8cf2218bd16b",
         "deploymentId": "904a7b71-7b2b-4d81-bc11-705a02e44202",
-        "status": "SUCCESS"
+        "status": "SUCCESS",
+        "sourceCommit": "438c4abb482eca2f2b7737ac5f65f0b990cb18a6"
       },
       {
         "name": "web",
         "serviceId": "5ba6a7b3-8e7d-4083-a598-a7e0bc2761ab",
-        "deploymentId": "d9411c04-fc9c-4778-83bb-46de2abdb159",
-        "status": "SUCCESS"
+        "deploymentId": "23d5e6e9-e200-49aa-ad31-424eb361f89a",
+        "status": "SUCCESS",
+        "sourceCommit": "b5f987b5ec38a1e505f8ccdddf86ad97f3e19c3e",
+        "previousDeploymentId": "d9411c04-fc9c-4778-83bb-46de2abdb159"
       },
       {
         "name": "docs",
         "serviceId": "03f76626-4a29-4794-9b8c-e699673bee02",
-        "deploymentId": "2102b6fe-ac12-4111-aaf6-480aa6b9c3b4",
-        "status": "SUCCESS"
+        "deploymentId": "2a7017a1-5541-49fa-8e0d-9acfe87fbc45",
+        "status": "SUCCESS",
+        "sourceCommit": "b5f987b5ec38a1e505f8ccdddf86ad97f3e19c3e",
+        "previousDeploymentId": "2102b6fe-ac12-4111-aaf6-480aa6b9c3b4"
       }
     ],
     "postgresDeploymentUnchanged": "81e65891-64d0-4b3c-94aa-38c7aa4e8c41",
@@ -73,7 +79,8 @@
       "liveClientChunksScanned": 16,
       "secretMatches": 0,
       "invalidExpiredAndOverlongSessionsRejected": 3
-    }
+    },
+    "liveBrowserSourceCommit": "438c4abb482eca2f2b7737ac5f65f0b990cb18a6"
   },
   "chainVerification": {
     "verifiedAt": "2026-09-05T09:03:34.904Z",
@@ -169,5 +176,30 @@
     "noPendingOperatorTransactions": true,
     "actualTestUsdcSpent": "0.10"
   },
-  "testEthSpentIncludingDeploymentAndFourAnchors": "0.000010438020273704"
+  "testEthSpentIncludingDeploymentAndFourAnchors": "0.000010438020273704",
+  "initialReleaseSourceCommit": "438c4abb482eca2f2b7737ac5f65f0b990cb18a6",
+  "frontendFollowup": {
+    "sourceCommit": "b5f987b5ec38a1e505f8ccdddf86ad97f3e19c3e",
+    "reason": "Preserve the concurrent main commit 53a26f4 icon and header update merged by PR #3.",
+    "readOnlyBrowserChecks": 5,
+    "pageErrors": 0,
+    "blockedMutationAttempts": 0,
+    "iconFilesExactlyMatchingSource": 8,
+    "purchaseCountBefore": 5,
+    "purchaseCountAfter": 5,
+    "additionalPayments": 0,
+    "testUsdcBalanceAtomic": "550000",
+    "viewports": [
+      375,
+      768,
+      1280
+    ],
+    "security": {
+      "ok": true,
+      "trackedFilesScanned": 249,
+      "livePagesScanned": 12,
+      "liveClientChunksScanned": 16,
+      "secretMatches": 0
+    }
+  }
 }
