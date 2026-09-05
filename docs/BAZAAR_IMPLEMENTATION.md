@@ -174,9 +174,10 @@ MOCK_INVOICE_FAIL_ONCE=true。只允許本地網址，不可拿 fixture 成功�
 5. 唯讀確認我們的完整 endpoint 已出現在 CDP catalog，再切 API 至 bazaar；
    以已核准的 Test USDC 額度跑端到端驗收，保存目錄、認證、付款與發票證據。
 
-程式碼實作本身不會公開 Seller 或發出付款。公開部署的實際結果以 rollout 紀錄為準；
-未切換 live discovery mode、未重部署合約、未送出付費索引請求，也沒有啟用真實
-LLM parser。歷史付款不得在上線或 onboarding 時改寫。
+程式碼實作本身不會公開 Seller 或發出付款。公開部署及另外獲批的兩筆索引付款
+已完成，CDP 目錄與搜尋都已查到，實際證據見 rollout 紀錄。未切換 live discovery
+mode、未自動認證商家、未重部署合約，也沒有啟用真實 LLM parser。
+歷史付款不得在上線或 onboarding 時改寫。
 
 ## 官方依據
 

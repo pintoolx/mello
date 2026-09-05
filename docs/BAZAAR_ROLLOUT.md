@@ -1,7 +1,8 @@
 # Bazaar 公開 Seller rollout — 2026-09-05
 
-使用者已同意準備合併與公開 Seller 部署；索引付款需另列目標與金額後確認，
-本輪不得執行付款。實作範圍見 [Bazaar 交接](BAZAAR_IMPLEMENTATION.md)。
+本文保留部署與後續索引付款兩階段紀錄。部署階段沒有付款；使用者在確認
+Seller A 0.04、Seller B 0.05 Test USDC、各一次、合計上限 0.09 後另行回覆
+「好」，付款已依該授權完成。實作範圍見 [Bazaar 交接](BAZAAR_IMPLEMENTATION.md)。
 
 ## 部署前基線
 
@@ -33,7 +34,7 @@ MELLO_SYNC_PUBLIC_SELLER_BINDINGS=true 才執行：檢查付款已凍結、無�
 價格、policy、認證及歷史採購。其他舊網址一律拒絕。成功後把開關設回 false，
 不自動觸發額外部署；未來正常 db:prepare 不做服務資料同步。
 
-## 待確認的索引付款草案
+## 索引付款目標與限額
 
 | 目標 | 收款地址 | 每次 Test USDC |
 | --- | --- | --- |
@@ -42,7 +43,8 @@ MELLO_SYNC_PUBLIC_SELLER_BINDINGS=true 才執行：檢查付款已凍結、無�
 
 網路 Base Sepolia（eip155:84532），資產為
 0x036CbD53842c5426634e7929541eC2318f3dCF7e 的 Test USDC（6 decimals）。
-提案上限為兩次、合計 0.09 Test USDC；不是現在的付款授權。已驗證的付款目標：
+原提案上限為兩次、合計 0.09 Test USDC；使用者後續已明確核准，執行結果見下方。
+此授權已用完，不得當成重複付款許可。已驗證的付款目標：
 
 - Seller A：POST https://seller-a-production.up.railway.app/v1/credit-report
 - Seller B：POST https://seller-b-production.up.railway.app/v1/credit-report
@@ -107,6 +109,66 @@ full-stack 6 案例因現有 stack 不符 onchain preflight 而未執行，不�
 deployments.json、public-probes.json、baseline.json、frozen-check.json、
 after.json、browser-report.json 與響應式截圖。此目錄不提交 secrets 或 session。
 
-下一步仍須使用者明確批准上述兩個目標、每次金額及合計上限，再執行獨立的
-索引 onboarding。付款後須確認實際收錄，並完成有範圍的商家審核；不自動
-放寬 policy、不把 validation 當成認證，也不因索引延遲重複付款。
+上述為 20:27 部署階段的結果，當時尚未取得付款批准。後續執行紀錄如下。
+
+## 已批准的索引付款執行結果
+
+2026-09-05 20:46（Asia/Taipei）完成兩筆獨立 onboarding；只呼叫已公開的
+Seller endpoint，沒有透過一般採購重跑、人工核准或補發票入口。
+
+| 目標 | Test USDC | Base Sepolia 交易 | 區塊 |
+| --- | ---: | --- | ---: |
+| Seller A | 0.04 | [0x6c9e4097…66ec1ed](https://sepolia.basescan.org/tx/0x6c9e40970886ee28a8fa5927f11f7e48d5e7353189f13d29910fa933e66ec1ed) | 46422046 |
+| Seller B | 0.05 | [0x2489bec9…0b35914](https://sepolia.basescan.org/tx/0x2489bec99a4117c8061a1d5b6be77bbc388c0bc5dad168b4a9d4bef770b35914) | 46422049 |
+
+每個目標只送出一次付款請求，合計 90000 atomic（0.09 Test USDC）。兩者皆為
+HTTP 200、x402 success=true，已收到 isDemo=true 的信用報告。直接查驗鏈上
+receipt success、兩個確認、唯一的 USDC Transfer（from／to／amount）以及該
+ERC-3009 nonce 的 AuthorizationUsed 與 authorizationState=true。
+
+Buyer 餘額 500000 → 410000 atomic（0.50 → 0.41）；Seller A 0 → 40000，
+Seller B 500000 → 550000。沒有 Buyer 原生幣交易，也沒有 operator／合約交易。
+
+執行前再次查驗公開 402 條款及餘額。固定付款識別碼：
+
+- mello_bazaar_20260905_approved_seller_a_once
+- mello_bazaar_20260905_approved_seller_b_once
+
+限制網路、Token、收款人、金額、EIP-712 domain 與 300 秒內授權；不允許
+Permit2／額外簽署、redirect、付款重試或替代服務。每個不可逆步驟前以 wx、
+0600 權限與 fsync 落地標記，既有 batch／submission 會拒絕再次送出；不保存
+私鑰、原始授權簽章或 session。相關離線防護測試 8 項通過。
+
+### Bazaar 收錄查驗
+
+20:51 的 CDP 唯讀查驗結果：
+
+- /validate：兩者 valid=true、index.active=true；lastCrawledAt 分別為
+  2026-09-05T12:46:20.905Z 與 2026-09-05T12:46:26.864Z。
+- /discovery/merchant?payTo=...：兩個收款地址各回傳 1 筆，完整 endpoint、
+  x402 v2、POST、network、asset、payTo、amount 與核准內容一致。
+- /discovery/resources：也已查到兩個已刊登的完整資源。
+- /discovery/search：以完整網址＋付款條件、網域，或 Mello 查詢仍暫未回傳。
+  這與 merchant／resources 目錄的結果有差異；不能宣稱搜尋端或目前的 Mello
+  search-based discovery 已就緒，也不以此理由追加付款。
+
+20:55:29／20:55:30 的後續唯讀 /discovery/search 查驗已分別回傳完整目標，
+兩者 matchedCount=1、partialResults=false；搜尋端現已可見，期間沒有重付。
+20:57:47 的線上 Mello /registry/discovery 取得 3 筆候選，A／B 的 listed
+皆為 true，唯一未通過原因為 VERIFICATION_UNREVIEWED，沒有本地 fallback。
+
+因此目前可以確認「鏈上付款成功、CDP 商家／資源目錄與搜尋皆已收錄、Mello
+唯讀 discovery 找到兩個服務」，但不能宣稱「Mello 已啟用 Bazaar 採購」。
+SERVICE_DISCOVERY_MODE 仍為 local_demo，兩個商家仍為 UNREVIEWED；後續須
+人工範圍審核，再另行批准啟用與端到端採購驗收。原 policy 的發票要求保持不變。
+
+付款後唯讀比對仍為 10 個任務、6 筆採購，原有付款／交付／發票／對帳／anchor
+資料 digest 一致，公司、policy、operator 餘額、合約及付款凍結狀態皆不變。
+本輪未部署程式碼、未改畫面、未建立採購或發票。
+
+本地執行工具與不可覆寫紀錄：.railway/bazaar-index-once.mjs、
+.railway/bazaar-index-once.test.mjs、.railway/bazaar-indexing-approved-20260905/。
+付款後資料比對：/tmp/mello-bazaar-public-rollout/after-indexing.json。
+這些執行檔與 journal 保留在既有 integration 工作區，不提交環境秘密或授權簽章。
+此次 0.09 Test USDC 授權已完全使用，後續僅可重跑唯讀 catalog／merchant／
+validate-index 檢查，不可重新執行 pay。
