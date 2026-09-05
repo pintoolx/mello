@@ -133,7 +133,7 @@ export function MelloConsole() {
                     <label className="mb-2 block text-xs font-bold text-[#4e5d69]" htmlFor="purchase-request">採購需求說明</label>
                     <textarea id="purchase-request" value={task?.prompt ?? prompt} disabled={busy || !!task} onChange={(event) => setPrompt(event.target.value)} minLength={3} maxLength={2000} className="min-h-32 w-full resize-y border border-[#9da6ab] bg-white p-3 text-sm leading-6 outline-none focus:border-[#315a79] focus:ring-1 focus:ring-[#315a79]" aria-label="採購任務" />
                     <div className="mt-3 flex flex-wrap gap-2 text-xs">
-                      <Tag>核准門檻 {approvalLimit} USDC</Tag><Tag>台灣企業發票必備</Tag><Tag>Base Sepolia</Tag><Tag>USDC</Tag>
+                      <Tag>核准門檻 {approvalLimit}</Tag><Tag>台灣企業發票必備</Tag><Tag>Base Sepolia</Tag><Tag>USDC</Tag>
                     </div>
                     <div className="mt-4 flex flex-wrap gap-2 border-t border-[#d0d3d3] pt-4">
                       <button disabled={busy || frozen || !c.ready || (!!task && task.status !== "CREATED")} aria-busy={busy} onClick={() => void (task?.status === "CREATED" ? c.resume() : c.start(prompt))} className="enterprise-button primary">{busy ? "Agent 執行中…" : frozen ? "新付款已凍結" : task?.status === "CREATED" ? "繼續執行既有任務" : task ? "任務已建立 · 重置以新增" : "執行採購任務 →"}</button>
