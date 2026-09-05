@@ -27,4 +27,14 @@ describe("MockInvoiceAdapter", () => {
     await expect(adapter.issue(input)).rejects.toMatchObject({ retryable: true });
     await expect(adapter.issue(input)).resolves.toMatchObject({ status: "ISSUED_DEMO" });
   });
+
+  it("binds the saved billing profile into invoice evidence", async () => {
+    const adapter = new MockInvoiceAdapter();
+    const buyerProfile = { legalName: "Company A", businessId: input.buyerBusinessId, email: "billing@example.test", address: "Taipei", contactName: "Finance", phone: "02-12345678" };
+    const first = await adapter.issue({ ...input, buyerProfile });
+    const same = await adapter.issue({ ...input, buyerProfile });
+    const changed = await adapter.issue({ ...input, buyerProfile: { ...buyerProfile, email: "different@example.test" } });
+    expect(first.canonicalHash).toBe(same.canonicalHash);
+    expect(first.canonicalHash).not.toBe(changed.canonicalHash);
+  });
 });

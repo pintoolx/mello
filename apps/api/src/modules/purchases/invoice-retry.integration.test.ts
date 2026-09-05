@@ -238,7 +238,7 @@ describe.sequential("invoice fail-once PostgreSQL recovery", () => {
         reasonCodes: expect.arrayContaining(["LIVE_PAYMENT_TERMS_VALIDATED"]),
         livePaymentTerms: {
           amountAtomic: "50000",
-          payToAddress: "0x2222222222222222222222222222222222222222",
+          payToAddress: invoiceService.seller.payToAddress,
           network: MELLO_NETWORK,
           tokenAddress: BASE_SEPOLIA_USDC,
           facilitatorUrl: "https://x402.org/facilitator",
@@ -247,7 +247,19 @@ describe.sequential("invoice fail-once PostgreSQL recovery", () => {
       const paymentIdBefore = failedPurchase.payment.paymentId;
       const transactionHashBefore = failedPurchase.payment.transactionHash;
 
-      await workflow.retryInvoice(failedPurchase.id, "invoice-retry");
+      expect(failedPurchase.buyerProfileSnapshot).toMatchObject({ legalName: company.legalName, businessId: company.businessId, email: company.invoiceEmail || company.email });
+      // A settings edit between issue attempts must not rewrite this purchase's
+      // invoice identity or cause a false business-ID reconciliation failure.
+      await prisma.companyProfile.update({ where: { id: company.id }, data: { legalName: "Updated company", businessId: "24536806", invoiceEmail: "changed@example.test" } });
+      try {
+        await workflow.retryInvoice(failedPurchase.id, "invoice-retry");
+        expect(issue).toHaveBeenLastCalledWith(expect.objectContaining({
+          buyerBusinessId: company.businessId,
+          buyerProfile: expect.objectContaining({ legalName: company.legalName, businessId: company.businessId, email: company.invoiceEmail || company.email }),
+        }));
+      } finally {
+        await prisma.companyProfile.update({ where: { id: company.id }, data: { legalName: company.legalName, businessId: company.businessId, invoiceEmail: company.invoiceEmail } });
+      }
 
       const completed = await prisma.task.findUniqueOrThrow({
         where: { id: taskId },

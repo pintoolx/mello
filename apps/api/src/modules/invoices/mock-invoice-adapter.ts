@@ -1,6 +1,7 @@
-import { calculateTwdMinorUnits, hashCanonicalJson } from "@mello/shared";
+import { calculateTwdMinorUnits, hashCanonicalJson, type InvoiceBuyerProfile } from "@mello/shared";
 
 export interface InvoiceIssueInput {
+  buyerProfile?: InvoiceBuyerProfile;
   purchaseId: string;
   buyerBusinessId: string;
   sellerBusinessId: string;
@@ -69,6 +70,7 @@ export class MockInvoiceAdapter implements InvoiceAdapter {
       invoiceMode: "B2B_DEMO",
       invoiceNumber,
       buyerBusinessId: input.buyerBusinessId,
+      ...(input.buyerProfile ? { buyerProfile: input.buyerProfile } : {}),
       sellerBusinessId: input.sellerBusinessId,
       sellerProfileId: input.sellerProfileId,
       sourceAmountAtomic: input.sourceAmountAtomic,

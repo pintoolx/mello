@@ -14,6 +14,19 @@ export interface Company {
   legalName: string;
   businessId: string;
   defaultCostCenter: string;
+  email: string;
+  contactName?: string;
+  phone?: string;
+  address?: string;
+  invoiceEmail?: string;
+  invoiceAddress?: string;
+}
+export interface Health {
+  modes: Modes;
+  checks?: {
+    baseRpc?: { status: string; details?: { chainId?: number } };
+    buyerWallet?: { status: string; details?: { simulated?: boolean; usdcBalanceAtomic?: string } };
+  };
 }
 export interface Policy {
   version: number;
@@ -97,6 +110,7 @@ export interface Purchase {
   delivery?: { status: string; responseBody?: unknown } | null;
   invoice: {
     status: string;
+    buyerProfile?: { legalName: string; businessId: string; email: string; address: string } | null;
     invoiceNumber?: string | null;
     lastError?: string | null;
   } | null;

@@ -161,6 +161,10 @@ export class PrismaCoreApiRepository implements CoreApiRepository {
   }
 
   async saveCompany(input: CompanyProfileInput): Promise<unknown> {
+    // Older clients omit billing fields; do not overwrite their stored values.
+    const data = Object.fromEntries(Object.entries(input).filter(([, value]) => value !== undefined)) as {
+      [Key in keyof CompanyProfileInput]: Exclude<CompanyProfileInput[Key], undefined>;
+    };
     const existing = await this.prisma.companyProfile.findFirst({
       orderBy: { createdAt: "asc" },
       select: { id: true },
@@ -168,11 +172,11 @@ export class PrismaCoreApiRepository implements CoreApiRepository {
     if (existing) {
       return this.prisma.companyProfile.update({
         where: { id: existing.id },
-        data: input,
+        data,
       });
     }
     return this.prisma.companyProfile.create({
-      data: { id: DEMO_COMPANY_ID, ...input },
+      data: { id: DEMO_COMPANY_ID, ...data },
     });
   }
 
@@ -466,6 +470,7 @@ export class PrismaCoreApiRepository implements CoreApiRepository {
       invoice: purchase.invoice
         ? {
             ...purchase.invoice,
+            buyerProfile: purchase.buyerProfileSnapshot,
             lastError: sanitizedStoredError(purchase.invoice.lastError),
           }
         : null,
