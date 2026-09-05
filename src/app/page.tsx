@@ -9,15 +9,16 @@ export default function Home() {
       <section className="hairline-grid relative min-h-[92vh] border-b border-[#27323b] px-5 py-6 md:px-10 lg:px-16">
         <nav className="mx-auto flex max-w-[1440px] items-center justify-between border-b border-[#27323b] pb-5">
           <MelloLogo />
-          <div className="font-mono text-xs text-[#93a0a9]">P2P CONTROL / TAIWAN</div>
+          <div className="hidden font-mono text-xs text-[#93a0a9] sm:block">P2P CONTROL / TAIWAN</div>
         </nav>
         <div className="mx-auto grid max-w-[1440px] gap-14 pb-14 pt-20 lg:grid-cols-[1.25fr_.75fr] lg:items-end lg:pt-32">
           <div>
             <div className="mb-7 inline-flex items-center gap-3 rounded-full border border-[#545454] bg-[#111111] px-4 py-2 font-mono text-xs tracking-[.12em] text-[#42f658]">
               <span className="h-2 w-2 rounded-full bg-[#42f658]" /> AGENT PURCHASE CONTROL
             </div>
-            <h1 className="font-display max-w-5xl text-[clamp(3.4rem,8.5vw,8.4rem)] leading-[.88] tracking-[-.075em]">
-              讓 Agent 付錢之後，<span className="text-[#42f658]">帳還在。</span>
+            <h1 className="font-display max-w-5xl text-[clamp(3.1rem,7vw,6.5rem)] font-medium leading-[.92] tracking-[-.065em]">
+              <span className="block whitespace-nowrap">讓 Agent 付錢</span>
+              <span className="block whitespace-nowrap">之後，<span className="text-[#42f658]">帳還在。</span></span>
             </h1>
             <p className="mt-8 text-xl font-semibold tracking-[-.02em] text-[#bcc4c9] md:text-3xl">x402 解決付款。Mello 把帳做完。</p>
           </div>
@@ -31,7 +32,7 @@ export default function Home() {
         </div>
       </section>
 
-      <section className="mx-auto max-w-[1440px] px-5 py-24 md:px-10 lg:px-16">
+      <section id="controls" className="mx-auto max-w-[1440px] scroll-mt-8 px-5 py-24 md:px-10 lg:px-16">
         <p className="font-mono text-xs tracking-[.18em] text-[#ffbd59]">01 / WHAT MELLO CONTROLS</p>
         <div className="mt-8 grid border-l border-t border-[#27323b] md:grid-cols-3">
           {[
@@ -48,7 +49,7 @@ export default function Home() {
         </div>
       </section>
 
-      <section className="border-y border-[#27323b] bg-[#0d1217] px-5 py-24 md:px-10 lg:px-16">
+      <section id="loop" className="scroll-mt-8 border-y border-[#27323b] bg-[#0d1217] px-5 py-24 md:px-10 lg:px-16">
         <div className="mx-auto max-w-[1440px]">
           <p className="font-mono text-xs tracking-[.18em] text-[#ffbd59]">02 / THE CLOSED LOOP</p>
           <h2 className="font-display mt-5 text-4xl font-extrabold tracking-[-.04em] md:text-6xl">一筆付款，六段證據。</h2>
@@ -64,7 +65,7 @@ export default function Home() {
         </div>
       </section>
 
-      <section className="mx-auto grid max-w-[1440px] gap-16 px-5 py-24 md:px-10 lg:grid-cols-2 lg:px-16">
+      <section id="scenario" className="mx-auto grid max-w-[1440px] scroll-mt-8 gap-16 px-5 py-24 md:px-10 lg:grid-cols-2 lg:px-16">
         <div>
           <p className="font-mono text-xs tracking-[.18em] text-[#ffbd59]">03 / 17:00 SCENARIO</p>
           <h2 className="font-display mt-5 text-4xl font-extrabold tracking-[-.04em] md:text-6xl">六分鐘內，帳跟決策一起完成。</h2>
@@ -85,7 +86,7 @@ export default function Home() {
         </ol>
       </section>
 
-      <section className="border-t border-[#27323b] px-5 py-24 md:px-10 lg:px-16">
+      <section id="scope" className="scroll-mt-8 border-t border-[#27323b] px-5 py-24 md:px-10 lg:px-16">
         <div className="mx-auto grid max-w-[1440px] gap-px bg-[#27323b] lg:grid-cols-2">
           <article className="bg-[#111820] p-8"><div className="font-mono text-xs text-[#42f658]">MELLO DOES</div><h3 className="mt-5 text-3xl font-extrabold">控制、留證、對帳</h3><p className="mt-4 leading-7 text-[#93a0a9]">把 Agent 的採購意圖變成可驗證的政策與會計證據。</p></article>
           <article className="bg-[#111820] p-8"><div className="font-mono text-xs text-[#ff665e]">MELLO DOES NOT</div><h3 className="mt-5 text-3xl font-extrabold">不做市集、不代管資金</h3><p className="mt-4 leading-7 text-[#93a0a9]">不自架 facilitator、不處理正式電子發票、不碰主網資產。</p></article>

@@ -21,3 +21,14 @@ npm run dev
 5. 「凍結所有新付款」只切換前端狀態。
 
 所有付款與發票皆明確標示為 `SIMULATED` / `SANDBOX` / `TEST INVOICE`。
+
+## Visual QA
+
+先以 production mode 啟動在 4173，再執行 QA：
+
+```bash
+PORT=4173 npm run start
+npm run qa:visual
+```
+
+QA 會用 headless Chrome 驗證桌機與手機的正常、重複採購、低預算、地址不符及凍結狀態。報告與全頁截圖輸出至系統暫存目錄的 `mello-visual-qa`。
