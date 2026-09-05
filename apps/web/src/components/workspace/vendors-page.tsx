@@ -46,11 +46,7 @@ export function VendorsPage({
       <PageHeading
         title="供應商"
         description="查詢已登錄的服務、認證狀態與收款地址，並比對公共目錄的刊登內容。"
-      >
-        <button className="workspace-button" onClick={resource.refresh}>
-          重新整理
-        </button>
-      </PageHeading>
+      />
       <section className="workspace-panel">
         <div className="panel-heading">
           <h2>已登錄服務</h2>

@@ -13,6 +13,7 @@ Example (from repository root):
 
 import json
 import os
+import re
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urlsplit
 
@@ -26,8 +27,8 @@ if parsed.scheme != "http" or parsed.hostname not in ("127.0.0.1", "localhost"):
     raise SystemExit("This regression is restricted to an isolated local HTTP server.")
 
 NAVIGATION = [
-    ("/app/payments", "付款紀錄"),
-    ("/app/invoices", "發票與對帳"),
+    ("/app/records", "付款與憑證"),
+    ("/app/vendors", "供應商"),
     ("/app/policy", "採購政策"),
     ("/app/audit", "稽核紀錄"),
     ("/app/settings", "設定"),
@@ -86,6 +87,14 @@ with sync_playwright() as playwright:
             # Freeze periodic timers while measuring route-induced reads.
             page.clock.pause_at(datetime.now(timezone.utc) + timedelta(seconds=1))
             page.wait_for_load_state("networkidle")
+            expected_nav = "open"
+            if width >= 768:
+                page.get_by_role("button", name="收合工作區選單", exact=True).click()
+                page.clock.run_for(200)
+                expect(page.get_by_role("button", name="展開工作區選單", exact=True)).to_have_attribute("aria-expanded", "false")
+                expected_nav = "closed"
+            else:
+                expect(page.get_by_role("button", name="收合工作區選單", exact=True)).to_be_hidden()
             cookies = {cookie["name"]: cookie for cookie in context.cookies()}
             assert cookies["mello_session"]["httpOnly"] is True
             assert cookies["mello_session"]["sameSite"] == "Strict"
@@ -106,6 +115,8 @@ with sync_playwright() as playwright:
                 page.wait_for_load_state("networkidle")
                 expect(page.get_by_role("navigation", name="工作區導覽")).to_be_visible()
                 expect(page.get_by_role("link", name=label, exact=True).first).to_have_attribute("aria-current", "page")
+                expect(page.locator(".workspace-layout")).to_have_attribute("data-nav", expected_nav)
+                expect(page.get_by_role("button", name=re.compile(r"^重新(整理|讀取)"))).to_have_count(0)
                 assert requests.count(("GET", "/api/session")) == session_checks
                 assert {path: requests.count(("GET", path)) for path in shared_paths} == shared_reads
                 assert page.evaluate("window.sessionScreenFlashes") == 0
@@ -123,6 +134,11 @@ with sync_playwright() as playwright:
             assert requests.count(("GET", "/api/session")) == session_checks
             assert {path: requests.count(("GET", path)) for path in shared_paths} == shared_reads
             assert page.evaluate("window.sessionScreenFlashes") == 0
+            expect(page.locator(".workspace-layout")).to_have_attribute("data-nav", expected_nav)
+            if expected_nav == "closed":
+                page.get_by_role("button", name="展開工作區選單", exact=True).click()
+                page.clock.run_for(200)
+                expect(page.get_by_role("button", name="收合工作區選單", exact=True)).to_have_attribute("aria-expanded", "true")
 
             # Reload and a second browser tab use the real HTTP-only session.
             page.reload()
@@ -173,7 +189,7 @@ with sync_playwright() as playwright:
             assert {path: requests.count(("GET", path)) for path in shared_paths} == reads_after_expiry
             assert violations == [], violations
             assert script_errors == [], script_errors
-            print(json.dumps({"viewport": width, "navigation_session_rechecks": 0, "navigation_shared_resource_rechecks": 0, "route_list_reentry": "fresh GET", "login_flashes": 0, "logout_and_401": "resources stopped", "business_writes": 0}))
+            print(json.dumps({"viewport": width, "navigation_routes": [path for path, _ in NAVIGATION], "navigation_session_rechecks": 0, "navigation_shared_resource_rechecks": 0, "sidebar_state": "preserved" if width >= 768 else "mobile navigation", "ordinary_refresh_buttons": 0, "route_list_reentry": "fresh GET", "login_flashes": 0, "logout_and_401": "resources stopped", "business_writes": 0}))
             context.close()
     finally:
         browser.close()

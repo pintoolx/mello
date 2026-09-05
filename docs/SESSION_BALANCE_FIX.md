@@ -33,7 +33,7 @@ HttpOnly cookie、Origin 驗證或 API 401 失效處理。
 - 獨立覆核時已有 31 confirmations。未進行採購、付款或合約寫入。
 
 以 0.05 Test USDC 單價計，餘額可支付 22 次服務費；不包含合約 operator gas，
-也不是任何後续採購的自動付款授權。Faucet 使用持久化提交 marker、固定
+也不是任何後續採購的自動付款授權。Faucet 使用持久化提交 marker、固定
 idempotency key 及一次 HTTP 呼叫，沒有付款簽章或自動重試。
 
 ## Web 發布
@@ -116,3 +116,24 @@ catch-all route 仍會重建 `Workspace`，連帶重啟 settings、controls 與 
 25 筆任務、10 筆採購及付款控制的完整 canonical 快照，導覽前後與重整後
 完全一致；0 業務寫入、0 browser page errors。完整報告與遮蔽存取碼的截圖
 位於 ignored `.railway/session-balance-live-20260906/20260905T190619.627462Z/`。
+
+## PR 同步至最新 main
+
+上述為手動 Web 發布階段的證據，當時尚未提交 GitHub。使用者後續明確同意
+建立 PR 並於 CI 通過後合併；此 PR 另以最新 `main` 的 `a25f469` 為基底，
+保留 `77afecb`／`a25f469` 的新版側欄、公司識別、獨立供應商頁及合併的
+「付款與憑證」頁，沒有還原這兩筆既有改版。
+
+合併時保留本輪持久化 SessionGate／Workspace、自動 GET 更新及餘額文案；
+新供應商頁的一般刷新按鈕也移除。瀏覽器回歸腳本改用 records／vendors 導覽
+及設定頁的公司識別欄位，原三種尺寸、未存草稿、401／登出及零業務寫入
+檢查仍保留。前文的線上截圖對應先前手動部署，不是這次整合版的線上證據。
+
+Railway 唯讀檢查顯示所有應用服務的 source.repo 均為 null；GitHub workflow
+只做隔離 mock CI，未配置部署步驟，因此本次 push／merge 不會自行發布整合版。
+本次 PR 不執行額外部署、充值、採購或資料庫變更。
+
+整合後兩套本機瀏覽器回歸在 375／768／1280 px 均通過：新版六導航與側欄
+收合跨頁保持、無一般刷新按鈕、無導覽觸發的 session／共用 GET、登出與
+401 清理、15 秒／60 秒自動更新、公司識別更新且不覆蓋未存草稿，0 業務寫入。
+另已重新執行 Web 的 20 個單元測試、lint、typecheck 與 production build，全部通過。

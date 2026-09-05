@@ -2,10 +2,12 @@
 
 Use the same isolated dummy-session server as session-navigation.py.
 Business mutations and non-local requests are blocked by the browser harness.
+Set MELLO_QA_VIEWPORT to 375, 768, or 1280 (default) for each responsive run.
 """
 
 import json
 import os
+import re
 from urllib.parse import urlsplit
 
 from playwright.sync_api import expect, sync_playwright
@@ -13,6 +15,9 @@ from playwright.sync_api import expect, sync_playwright
 
 BASE_URL = os.environ.get("MELLO_SESSION_QA_URL", "http://127.0.0.1:4189")
 ACCESS_CODE = os.environ.get("MELLO_ACCESS_CODE", "local-session-test-only")
+VIEWPORT_WIDTH = int(os.environ.get("MELLO_QA_VIEWPORT", "1280"))
+if VIEWPORT_WIDTH not in (375, 768, 1280):
+    raise SystemExit("Use a regression viewport width of 375, 768, or 1280.")
 parsed = urlsplit(BASE_URL)
 if parsed.scheme != "http" or parsed.hostname not in ("127.0.0.1", "localhost"):
     raise SystemExit("This regression is restricted to an isolated local HTTP server.")
@@ -21,7 +26,7 @@ if parsed.scheme != "http" or parsed.hostname not in ("127.0.0.1", "localhost"):
 with sync_playwright() as playwright:
     browser = playwright.chromium.launch(headless=True)
     try:
-        page = browser.new_page(viewport={"width": 1280, "height": 900})
+        page = browser.new_page(viewport={"width": VIEWPORT_WIDTH, "height": 900})
         counts = {}
         mutations = []
         errors = []
@@ -192,15 +197,17 @@ with sync_playwright() as playwright:
         company_name = "伺服器背景更新的新公司名稱"
         settings_before_refresh = counts["/api/v1/settings"]
         page.clock.fast_forward(15_100)
-        expect(page.locator(".workspace-organization")).to_contain_text(company_name)
+        expect(page.locator(".settings-profile")).to_contain_text(company_name)
         expect(page.locator("#company-name")).to_have_value("正在編輯，不能被背景更新清空")
         expect(page.get_by_text("有尚未儲存的變更", exact=True)).to_be_visible()
+        expect(page.get_by_role("button", name=re.compile(r"^重新(整理|讀取)"))).to_have_count(0)
         assert counts["/api/v1/settings"] == settings_before_refresh + 1
         assert len(session_reads) == authenticated_session_reads
         assert session_writes == ["POST"]
         assert mutations == [], mutations
         assert errors == [], errors
         print(json.dumps({
+            "viewport": VIEWPORT_WIDTH,
             "regular_refresh_ms": 15_000,
             "health_refresh_ms": 60_000,
             "hidden_and_offline": "paused",
@@ -211,6 +218,8 @@ with sync_playwright() as playwright:
             "authenticated_session_rechecks": 0,
             "navigation_shared_resource_rechecks": 0,
             "settings_draft": "preserved",
+            "company_profile": "updated without replacing draft",
+            "ordinary_refresh_buttons": 0,
             "business_writes": 0,
         }))
     finally:
