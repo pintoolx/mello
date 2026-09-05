@@ -44,6 +44,7 @@ contracts/broadcast/
 
 # vercel
 .vercel/
+.railway/
 
 # typescript
 *.tsbuildinfo

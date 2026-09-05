@@ -25,6 +25,7 @@ const EnvironmentSchema = z
     WEB_ORIGIN: z.string().url().default("http://localhost:3000"),
     DATABASE_URL: z.string().min(1),
     DEMO_ADMIN_TOKEN: z.string().min(8).default("change-me-before-public-deploy"),
+    API_ACCESS_TOKEN: z.preprocess(blankToUndefined, z.string().min(32).optional()),
     AGENT_MODE: z.enum(["openai", "demo"]).default("demo"),
     OPENAI_API_KEY: z.preprocess(blankToUndefined, z.string().min(1).optional()),
     OPENAI_MODEL: z.preprocess(blankToUndefined, z.string().min(1).optional()),
@@ -84,6 +85,9 @@ const EnvironmentSchema = z
     WORKFLOW_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(3).default(3),
   })
   .superRefine((environment, context) => {
+    if (environment.NODE_ENV === "production" && !environment.API_ACCESS_TOKEN) {
+      context.addIssue({ code: "custom", path: ["API_ACCESS_TOKEN"], message: "Production API requires an access token" });
+    }
     if (environment.PAYMENT_MODE === "x402" && !environment.EVM_PRIVATE_KEY) {
       context.addIssue({
         code: "custom",

@@ -26,6 +26,7 @@ import type {
 } from "./modules/workflow-jobs/index.js";
 
 const TASK_ID = "00000000-0000-4000-8000-000000000101";
+const HTTP_API_KEY = "http-app-unit-test-only-private-api-key";
 const PURCHASE_ID = "00000000-0000-4000-8000-000000000102";
 const COMPANY: CompanyProfileInput & { id: string } = {
   id: "00000000-0000-4000-8000-000000000001",
@@ -49,6 +50,7 @@ const POLICY: PolicyInput & { id: string; version: number; active: boolean } = {
 function testConfig(nodeEnvironment: "test" | "production" = "test"): AppConfig {
   return loadConfig({
     NODE_ENV: nodeEnvironment,
+    ...(nodeEnvironment === "production" ? { API_ACCESS_TOKEN: HTTP_API_KEY } : {}),
     DATABASE_URL: "postgresql://mello:mello@localhost:5432/mello_test",
     DEMO_ADMIN_TOKEN: "api-route-test-fixture-only",
   });
@@ -190,6 +192,7 @@ describe("Core API HTTP app", () => {
   it("refuses the published placeholder admin token in production", () => {
     const config = loadConfig({
       NODE_ENV: "production",
+      API_ACCESS_TOKEN: HTTP_API_KEY,
       DATABASE_URL: "postgresql://mello:mello@localhost:5432/mello",
     });
 
@@ -220,11 +223,11 @@ describe("Core API HTTP app", () => {
     });
   });
 
-  it("keeps settings readable while requiring the admin token for mutations", async () => {
+  it("keeps settings readable to the BFF while requiring the admin token for mutations", async () => {
     const productionDependencies = dependencies({ config: testConfig("production") });
     const app = createApp(productionDependencies);
 
-    const settings = await supertest(app).get("/api/v1/settings").expect(200);
+    const settings = await supertest(app).get("/api/v1/settings").set("x-mello-api-key", HTTP_API_KEY).expect(200);
     expect(settings.body).toMatchObject({
       company: { businessId: "12345675" },
       policy: { version: 1 },
@@ -232,6 +235,7 @@ describe("Core API HTTP app", () => {
 
     const unauthorized = await supertest(app)
       .put("/api/v1/company")
+      .set("x-mello-api-key", HTTP_API_KEY)
       .send({
         legalName: COMPANY.legalName,
         businessId: COMPANY.businessId,
@@ -246,12 +250,14 @@ describe("Core API HTTP app", () => {
 
     await supertest(app)
       .put("/api/v1/policies/active")
+      .set("x-mello-api-key", HTTP_API_KEY)
       .set("x-demo-admin-token", "wrong-admin-token")
       .send(POLICY)
       .expect(401);
 
     const authorized = await supertest(app)
       .put("/api/v1/company")
+      .set("x-mello-api-key", HTTP_API_KEY)
       .set("x-demo-admin-token", "api-route-test-fixture-only")
       .send({
         legalName: COMPANY.legalName,
@@ -278,6 +284,7 @@ describe("Core API HTTP app", () => {
 
     const remoteConfig = loadConfig({
       NODE_ENV: "production",
+      API_ACCESS_TOKEN: HTTP_API_KEY,
       DATABASE_URL: "postgresql://mello:mello@db.example.com:5432/mello",
       DEMO_ADMIN_TOKEN: "api-route-test-fixture-only",
     });
@@ -286,6 +293,7 @@ describe("Core API HTTP app", () => {
       createApp(dependencies({ config: remoteConfig, repository: remoteRepository })),
     )
       .post("/api/v1/demo/reset")
+      .set("x-mello-api-key", HTTP_API_KEY)
       .set("x-demo-admin-token", "api-route-test-fixture-only")
       .expect(403);
     expect(forbidden.body.error.message).toContain("local database");

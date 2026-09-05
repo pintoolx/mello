@@ -3,6 +3,7 @@ import { MELLO_NETWORK, formatUsdcAtomic, parseUsdcToAtomic } from "@mello/share
 
 const EXPLICIT_USDC_AMOUNT_PATTERN = /(\d+(?:\.\d{1,6})?)\s*USDC\b/giu;
 const TARGET_PATTERNS = [
+  /出貨給\s*([^。！!，,\n]+)[。！!，,]/u,
   /(?:買|購買)(?:一份|一個)?\s*(.+?)\s*的(?:信用報告|徵信報告|企業徵信)/u,
   /(?:查詢|調查)\s*(.+?)\s*的(?:信用|徵信)/u,
   /(?:buy|purchase)(?:\s+a)?\s+(.+?)\s+(?:credit\s+report|credit\s+check)/iu,
@@ -17,12 +18,14 @@ export interface FallbackParserInput {
 /**
  * A prompt can contain quoted prices, old limits, or conflicting instructions.
  * Treat every explicit USDC amount as a ceiling and select the smallest one;
+ * an unambiguous manual-approval clause is enforced separately by ProcurementControls.
  * a parser or model must never silently expand the user's stated authority.
  */
 export function extractConservativeUsdcBudget(
   prompt: string,
 ): { atomic: string; display: string } | null {
-  const matches = [...prompt.matchAll(EXPLICIT_USDC_AMOUNT_PATTERN)];
+  const budgetText = prompt.replace(/超過\s*\d+(?:\.\d{1,6})?\s*USDC\s*(?:先問我|需(?:要)?核准|先核准)/giu, "");
+  const matches = [...budgetText.matchAll(EXPLICIT_USDC_AMOUNT_PATTERN)];
   if (matches.length === 0) return null;
 
   return matches.reduce<{ atomic: string; display: string } | null>(

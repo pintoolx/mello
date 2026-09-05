@@ -5,6 +5,7 @@ import type {
   TaskStatus,
 } from "@mello/shared";
 import type { AppConfig } from "../config.js";
+import type { ProcurementControls } from "../modules/controls/procurement-controls.js";
 import type {
   WorkflowJobPoller,
   WorkflowJobQueue,
@@ -84,6 +85,7 @@ export interface HealthService {
 }
 
 export interface CoreApiDependencies {
+  controls?: ProcurementControls;
   config: AppConfig;
   repository: CoreApiRepository;
   workflow: WorkflowOperations;

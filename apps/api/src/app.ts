@@ -1,4 +1,5 @@
-import { randomUUID } from "node:crypto";
+import { randomUUID, timingSafeEqual } from "node:crypto";
+import { MelloError } from "@mello/shared";
 import cors from "cors";
 import express, { type Express, type RequestHandler } from "express";
 import type { CoreApiDependencies } from "./http/contracts.js";
@@ -47,6 +48,17 @@ export function createApp(dependencies: CoreApiDependencies): Express {
   );
   app.use(requestContext(dependencies));
   app.use(express.json({ limit: "64kb" }));
+  app.get("/healthz", (_request, response) => response.json({ status: "ok" }));
+  app.use("/api/v1", (request, _response, next) => {
+    const expected = dependencies.config.API_ACCESS_TOKEN;
+    if (!expected) { next(); return; }
+    const supplied = request.header("x-mello-api-key") ?? "";
+    if (Buffer.byteLength(supplied) !== Buffer.byteLength(expected) || !timingSafeEqual(Buffer.from(supplied), Buffer.from(expected))) {
+      next(new MelloError("VALIDATION_ERROR", "Authenticated API access is required", { statusCode: 401 }));
+      return;
+    }
+    next();
+  });
   app.use("/api/v1", createApiRouter(dependencies));
   app.use(createNotFoundHandler());
   app.use(createErrorHandler(dependencies));

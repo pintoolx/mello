@@ -1,6 +1,6 @@
 # Mello monorepo
 
-Mello 是台灣企業的 Agent Purchase-to-Pay 控制層。`apps/web` 保留已完成的 Next.js 黑客松視覺 Demo，`apps/api` 已整合採購 workflow、PostgreSQL、x402 與稽核後端。前端目前仍使用本地模擬資料，尚未接線到 API；正式電子發票 adapter 尚未實作。
+Mello 是台灣企業的 Agent Purchase-to-Pay 控制層。`apps/web` 沿用現有 Next.js 視覺，透過有 session 驗證的同源 BFF 串接 `apps/api` 的採購 workflow、PostgreSQL、x402 與稽核後端。付款支援 Base Sepolia Test USDC；發票仍為明確標示的 DEMO，正式電子發票 adapter 尚未實作。
 
 ## Repository structure
 
@@ -22,6 +22,9 @@ mello/
 
 ```bash
 npx --yes npm@11.19.1 ci
+cp apps/web/.env.example apps/web/.env.local
+# 設定 CORE_API_URL，以及與 API 相同的 API_ACCESS_TOKEN / DEMO_ADMIN_TOKEN。
+# 另外產生 MELLO_ACCESS_CODE、MELLO_SESSION_SECRET，詳見下方部署文件。
 npm run dev
 ```
 
@@ -39,24 +42,27 @@ npm run typecheck
 
 ## Demo flow
 
-1. 在 Task Composer 點「執行採購任務」。
-2. 畫面依序亮起比較、Policy ALLOW、付款、Sandbox Invoice 與 MATCHED。
-3. 點「模擬財務 Agent 重複下單」，展示 `DUPLICATE_PURCHASE`。
-4. 可用「測試 0.03 預算」與「測試 payTo 不符」展示拒絕狀態。
-5. 「凍結所有新付款」只切換前端狀態。
+1. 以私有存取碼登入操作台，讀取 API 的公司與政策。
+2. 執行採購，輪詢真實比較、政策、付款、交付、發票、對帳及合約錨定。
+3. 開票失敗可「重試發票（不重付）」；重複下單重用 request key，不新增付款。
+4. 測試低預算、收款地址不符，以及「超過 0.03 USDC 先問我」的人工核准。
+5. 凍結由 PostgreSQL 保存且後端強制執行；已取得放行許可的在途付款不會被撤銷。
+6. Reload 恢復同一採購；「重置 Demo」只清空畫面，不刪除帳務紀錄。
 
-所有付款與發票皆明確標示為 `SIMULATED` / `SANDBOX` / `TEST INVOICE`。
+畫面分別呈現 payment / invoice / anchor 模式；`x402` 是真實測試網移轉，`mock` 才是模擬。沒有主網付款或正式開票。
 
 ## Visual QA
 
-先以 production mode 啟動在 4173，再從另一個 terminal 執行 QA：
+目前接線版的完整驗收使用 Playwright（Python 套件及 Chromium）。啟動 API、Sellers 與 Web 後：
 
 ```bash
-PORT=4173 npm run start
-npm run qa:visual
+set -a
+. apps/web/.env.local
+set +a
+MELLO_E2E_URL=http://localhost:3000 python3 apps/web/scripts/demo-e2e.py
 ```
 
-QA 會以 headless Chrome 驗證桌機與手機的正常、重複採購、低預算、地址不符及凍結狀態；報告與全頁截圖輸出到系統暫存目錄的 `mello-visual-qa`。
+驗收涵蓋登入／CSRF、三筆採購、重試不重付、重複 request key、凍結、拒絕、核准與 375／768／1280 px。Mock 驗收須設 `MOCK_INVOICE_FAIL_ONCE=true`。遠端 `--live` 另需當次明確設定 `MELLO_TESTNET_PAYMENT_APPROVED=true`，最多支付 0.15 Test USDC；不要在服務環境永久開啟此旗標。舊 `qa:visual`／錄影腳本針對純視覺 Demo，不是接線版驗收。
 
 首頁的產品操作錄影由新版企業系統介面產生。需要重新錄製時，先啟動 production server，再執行：
 
@@ -66,7 +72,7 @@ npm run record:demo
 
 ## Backend teammate workflow
 
-後端已可啟動；完整設定與驗證見 [apps/api/README.md](apps/api/README.md)，前端欄位／狀態／endpoint 對照與待決事項見 [串接交接](apps/api/docs/FRONTEND_INTEGRATION.md)。
+完整設定與驗證見 [apps/api/README.md](apps/api/README.md)，欄位／狀態／endpoint 對照見 [串接交接](apps/api/docs/FRONTEND_INTEGRATION.md)，Railway 組態見 [部署說明](docs/RAILWAY.md)。
 
 ```bash
 npx --yes npm@11.19.1 ci

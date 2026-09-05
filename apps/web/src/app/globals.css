@@ -25,7 +25,7 @@ body {
 button, textarea, input, select { font: inherit; }
 button { cursor: pointer; }
 button:disabled { cursor: not-allowed; }
-button:focus-visible, textarea:focus-visible, a:focus-visible, video:focus-visible {
+button:focus-visible, textarea:focus-visible, input:focus-visible, summary:focus-visible, a:focus-visible, video:focus-visible {
   outline: 2px solid #315a79;
   outline-offset: 2px;
 }
@@ -45,7 +45,7 @@ button:focus-visible, textarea:focus-visible, a:focus-visible, video:focus-visib
 .section-code { font-size: 10px; font-weight: 700; letter-spacing: .14em; color: #5d6d77; }
 
 .enterprise-button {
-  min-height: 36px;
+  min-height: 40px;
   border: 1px solid #8f999f;
   background: #f7f7f3;
   padding: 7px 13px;

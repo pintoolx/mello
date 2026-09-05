@@ -206,6 +206,25 @@ export function createApiRouter(dependencies: CoreApiDependencies): Router {
   const router = Router();
   const requireDemoAdmin = demoAdmin(dependencies);
 
+  router.get("/controls", async (_request, response) => {
+    if (!dependencies.controls) return notFound("Procurement controls");
+    sendJson(response, 200, await dependencies.controls.state());
+  });
+  router.put("/controls", requireDemoAdmin, async (request, response) => {
+    if (!dependencies.controls) return notFound("Procurement controls");
+    const { paymentsFrozen } = z.object({ paymentsFrozen: z.boolean() }).strict().parse(request.body);
+    sendJson(response, 200, await dependencies.controls.setFrozen(paymentsFrozen));
+  });
+  router.post("/tasks/:taskId/approve", requireDemoAdmin, async (request, response) => {
+    if (!dependencies.controls) return notFound("Procurement controls");
+    const { taskId } = TaskIdentifierParamsSchema.parse(request.params);
+    const operationRequestId = requestId(response);
+    await dependencies.controls.approve(taskId, operationRequestId);
+    await dependencies.workflowJobs.enqueue({ kind: "RUN_TASK", aggregateId: taskId,
+      payload: { taskId, requestId: operationRequestId }, maxAttempts: dependencies.config.WORKFLOW_MAX_ATTEMPTS });
+    sendJson(response, 202, { taskId, status: "PARSING" });
+  });
+
   router.get("/demo/health", async (_request, response) => {
     sendJson(response, 200, await dependencies.healthService.check());
   });
@@ -287,6 +306,12 @@ export function createApiRouter(dependencies: CoreApiDependencies): Router {
 
   router.post("/tasks", async (request, response) => {
     const input = CreateTaskSchema.parse(request.body);
+    if (dependencies.controls) {
+      const task = await dependencies.controls.createTask(input);
+      sendJson(response, task.deduplicated ? 200 : 201, { taskId: task.id, status: task.status,
+        requestKey: task.requestKey, deduplicated: task.deduplicated });
+      return;
+    }
     const task = await dependencies.repository.createTask(input.prompt);
     sendJson(response, 201, { taskId: task.id, status: task.status });
   });
@@ -315,6 +340,7 @@ export function createApiRouter(dependencies: CoreApiDependencies): Router {
       });
     }
     const operationRequestId = requestId(response);
+    await dependencies.controls?.ensureNotFrozen();
     await dependencies.workflowJobs.enqueue({
       kind: "RUN_TASK",
       aggregateId: taskId,
@@ -389,7 +415,9 @@ export function createApiRouter(dependencies: CoreApiDependencies): Router {
     const { taskId } = TaskIdentifierParamsSchema.parse(request.params);
     const task = await dependencies.repository.getTaskDetail(taskId);
     if (!task) return notFound("Task");
-    sendJson(response, 200, task);
+    sendJson(response, 200, dependencies.controls
+      ? { ...toObject(task), control: await dependencies.controls.detail(taskId) }
+      : task);
   });
 
   router.get("/purchases", async (request, response) => {

@@ -1,0 +1,27 @@
+FROM node:24.14.0-bookworm-slim AS build
+RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates && rm -rf /var/lib/apt/lists/*
+RUN npm install --global npm@11.19.1
+WORKDIR /workspace
+COPY package.json package-lock.json .npmrc ./
+COPY apps/api/package.json apps/api/package.json
+COPY apps/web/package.json apps/web/package.json
+COPY apps/api/prisma apps/api/prisma
+ENV DATABASE_URL=postgresql://build:build@localhost:5432/build
+ENV DIRECT_DATABASE_URL=postgresql://build:build@localhost:5432/build
+RUN npm ci --workspace @mello/api --include-workspace-root --no-audit --no-fund
+COPY apps/api apps/api
+COPY contracts/abi contracts/abi
+RUN npm run build --workspace @mello/api
+RUN npm prune --omit=dev --workspace @mello/api --include-workspace-root --no-audit --no-fund
+
+FROM node:24.14.0-bookworm-slim AS runtime
+RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates && rm -rf /var/lib/apt/lists/*
+WORKDIR /workspace
+ENV NODE_ENV=production
+COPY --from=build --chown=node:node /workspace/package.json /workspace/package-lock.json ./
+COPY --from=build --chown=node:node /workspace/node_modules ./node_modules
+COPY --from=build --chown=node:node /workspace/apps/api ./apps/api
+COPY --from=build --chown=node:node /workspace/contracts/abi ./contracts/abi
+USER node
+EXPOSE 8080
+CMD ["npm", "run", "start", "--workspace", "@mello/api"]

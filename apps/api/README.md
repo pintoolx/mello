@@ -61,7 +61,7 @@ npm run start --workspace @mello/api
 
 API 以 tsx 執行 TypeScript；build 產生 Prisma client 並檢查型別，不輸出獨立的 JavaScript bundle。部署時保留 `apps/api`、root npm lockfile 及 `contracts/abi/MelloAuditRegistry.json`，並在建置階段安裝／產生依賴。API 有長期執行的 background workflow worker，應部署為持續運行的 Node.js service，與 Next.js service 分開。
 
-API 預設綁定 loopback；容器部署需設定 `CORE_API_HOST=0.0.0.0`，seller 亦可設定 `SELLER_BIND_HOST`。瀏覽器直連 API 時，`WEB_ORIGIN` 必須符合實際前端 origin。
+API 預設綁定 loopback；Railway 私有網路部署使用 `CORE_API_HOST=::`，seller 使用 `SELLER_BIND_HOST=::`。Next.js BFF 以私有網路連 API，瀏覽器不接觸後端憑證。production 需 API_ACCESS_TOKEN。容器與 Railway 設定見 [部署說明](../../docs/RAILWAY.md)。
 
 ## 模式與憑證
 
@@ -103,7 +103,7 @@ npm run demo:health
 MELLO_TESTNET_PAYMENT_APPROVED=true npm run demo:smoke:testnet --workspace @mello/api
 ```
 
-遠端 smoke 最多三筆 0.05 Test USDC，另有六筆 operator-paid anchors。不要把批准旗標持久化設為 true。本次 repo 整合驗證使用 mock settlement／本地 Anvil；先前 Base Sepolia 驗收不代表在新 checkout 又送出了付款。
+遠端 smoke 最多三筆 0.05 Test USDC，另有六筆 operator-paid anchors。不要把批准旗標持久化設為 true。後端 smoke 不替代瀏覽器验收；接線版 Playwright 入口是 apps/web/scripts/demo-e2e.py。
 
 ## 驗證
 
@@ -125,6 +125,8 @@ npm run test:integration
 
 ## API 邊界
 
-Settings 寫入、demo reset、payment reconciliation 需要 `x-demo-admin-token`；一般任務與讀取 API 目前是單一 demo 公司範圍，尚無正式多租戶登入／授權。Next.js proxy 不會自動補足這項能力。
+所有 API 在設定 API_ACCESS_TOKEN 後要求 `x-mello-api-key`，production 強制要求此設定。Settings 寫入、核准、freeze、demo reset、payment reconciliation 另需 `x-demo-admin-token`。Next.js BFF 先驗證私有操作台 session 及同 origin 寫入才補 token；仍為單一 demo 公司／操作員，不是正式多租戶登入或職務分權。
+
+`TaskControl` 保存 request key 去重及人工核准條款；`PaymentControl` 保存全域凍結。凍結與 payment release 以短 transaction lock 排序，不包住外部付款呼叫；已取得放行許可的在途付款不被撤銷。部署執行 db:migrate 後用 db:init 初始化空資料庫，避免每次部署 seed 覆蓋既有公司與政策。
 
 POST 操作傳回 202 表示已排入 durable job；請輪詢 task／purchase。失敗時依 `availableActions` 顯示專用重試，不能用建立新 task 取代 invoice retry 或不確定的 settlement reconciliation。完整欄位、HTTP 狀態與缺口見 [前端串接交接](docs/FRONTEND_INTEGRATION.md)。
