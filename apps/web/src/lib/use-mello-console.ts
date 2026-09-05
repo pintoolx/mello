@@ -35,6 +35,10 @@ export function useMelloConsole() {
       api<Settings>("/api/v1/settings"), api<Control>("/api/v1/controls"),
       api<{ items: TaskSummary[] }>("/api/v1/tasks?limit=20"), api<Health>("/api/v1/demo/health"),
     ]);
+    if (!nextSettings.company || !nextSettings.policy || !nextSettings.services.length) {
+      setSettings(null);
+      throw new Error("後端尚未初始化公司、政策或供應商。請管理員完成資料庫初始化，再重新整理狀態。");
+    }
     setSettings(nextSettings); setControl(nextControl); setHistory(tasks.items); setHealth(nextHealth);
   }, []);
 
