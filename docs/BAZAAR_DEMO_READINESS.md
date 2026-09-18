@@ -49,7 +49,7 @@ Seller B 另需 DEMO_INVOICE_INTEGRATION。不能把「有收過測試款」等�
 | A | 0xeD6C588900675849e43DFabd12Fad227F21a5E8E | 私鑰磁碟讀回、備份比對、簽名及地址復原通過 |
 | B | 0x9e82d7Af834AaCC4777cAf6b00b4104cb661c5a8 | 私鑰磁碟讀回、備份比對、簽名及地址復原通過 |
 
-保存根目錄為 `/home/kuoba123/.local/share/mello/wallets/base-sepolia`，在
+保存根目錄為 `~/.local/share/mello/wallets/base-sepolia`，在
 兩個專案工作區之外，不會隨 Git 或專案部署上傳。
 
 - 主檔：`seller-a.wallet.json`、`seller-b.wallet.json`。
